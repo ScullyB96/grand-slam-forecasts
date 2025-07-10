@@ -4,8 +4,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { TrendingUp, TrendingDown, Info, Target, Clock, Calculator, BarChart3, Trophy, Percent } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TrendingUp, TrendingDown, Info, Target, Clock, Calculator, BarChart3, Trophy, Percent, Database } from 'lucide-react';
 import ExplanationModal from './ExplanationModal';
+import PredictionDataTab from './PredictionDataTab';
 
 interface GamePrediction {
   id: number;
@@ -34,6 +36,10 @@ interface PredictionCardProps {
   gameTime?: string;
 }
 
+interface TeamWithId extends Team {
+  id: number;
+}
+
 const PredictionCard: React.FC<PredictionCardProps> = ({
   prediction,
   homeTeam,
@@ -41,6 +47,7 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
   gameTime
 }) => {
   const [showExplanation, setShowExplanation] = useState(false);
+  const [activeTab, setActiveTab] = useState('prediction');
 
   const getConfidenceColor = (confidence?: number) => {
     if (!confidence) return 'secondary';
@@ -136,7 +143,20 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
           )}
         </CardHeader>
 
-        <CardContent className="space-y-6">
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="prediction" className="flex items-center gap-2">
+                <Trophy className="h-4 w-4" />
+                Prediction
+              </TabsTrigger>
+              <TabsTrigger value="data" className="flex items-center gap-2">
+                <Database className="h-4 w-4" />
+                All Data
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="prediction" className="space-y-6 mt-6">
           {/* Win Probabilities with Visual Progress */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 mb-3">
@@ -376,17 +396,28 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
             </div>
           </div>
 
-          <div className="text-xs text-muted-foreground flex items-center justify-between pt-2 border-t">
-            <span>Updated: {formatPredictionDate(prediction.prediction_date)} EST</span>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setShowExplanation(true)}
-              className="text-xs h-6"
-            >
-              View Details
-            </Button>
-          </div>
+              <div className="text-xs text-muted-foreground flex items-center justify-between pt-2 border-t">
+                <span>Updated: {formatPredictionDate(prediction.prediction_date)} EST</span>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowExplanation(true)}
+                  className="text-xs h-6"
+                >
+                  View Details
+                </Button>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="data" className="mt-6">
+              <PredictionDataTab 
+                gameId={prediction.game_id}
+                homeTeam={homeTeam as TeamWithId}
+                awayTeam={awayTeam as TeamWithId}
+                prediction={prediction}
+              />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 
