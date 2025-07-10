@@ -88,45 +88,79 @@ serve(async (req) => {
         console.log(`Processing game ${game.game_id}...`);
         
         // Check if we have team stats
-        const { data: homeStats } = await supabase
+        const { data: homeStats, error: homeStatsError } = await supabase
           .from('team_stats')
           .select('*')
           .eq('team_id', game.home_team_id)
           .eq('season', 2025)
           .maybeSingle();
 
-        const { data: awayStats } = await supabase
+        const { data: awayStats, error: awayStatsError } = await supabase
           .from('team_stats')
           .select('*')
           .eq('team_id', game.away_team_id)
           .eq('season', 2025)
           .maybeSingle();
 
-        if (!homeStats || !awayStats) {
-          console.log(`Missing team stats for game ${game.game_id}`);
+        if (homeStatsError) {
+          console.error(`Error fetching home stats for team ${game.home_team_id}:`, homeStatsError);
           errors++;
           continue;
         }
 
-        // Create a simple prediction
+        if (awayStatsError) {
+          console.error(`Error fetching away stats for team ${game.away_team_id}:`, awayStatsError);
+          errors++;
+          continue;
+        }
+
+        if (!homeStats) {
+          console.log(`Missing home team stats for team ${game.home_team_id}, game ${game.game_id}`);
+          errors++;
+          continue;
+        }
+
+        if (!awayStats) {
+          console.log(`Missing away team stats for team ${game.away_team_id}, game ${game.game_id}`);
+          errors++;
+          continue;
+        }
+
+        console.log(`Found stats for both teams. Home: ${game.home_team_id}, Away: ${game.away_team_id}`);
+
+        // Create a realistic prediction based on team stats
+        const homeWinPct = homeStats.wins / (homeStats.wins + homeStats.losses) || 0.5;
+        const awayWinPct = awayStats.wins / (awayStats.wins + awayStats.losses) || 0.5;
+        
+        // Home field advantage
+        const homeAdvantage = 0.54;
+        let homeWinProb = (homeWinPct * 0.6) + (homeAdvantage * 0.4);
+        homeWinProb = Math.max(0.15, Math.min(0.85, homeWinProb));
+        
+        const awayWinProb = 1 - homeWinProb;
+
+        // Score predictions based on team offensive/defensive stats
+        const homeExpectedRuns = Math.max(3, Math.min(8, homeStats.runs_scored / Math.max(1, (homeStats.wins + homeStats.losses)) + (Math.random() * 2 - 1)));
+        const awayExpectedRuns = Math.max(3, Math.min(8, awayStats.runs_scored / Math.max(1, (awayStats.wins + awayStats.losses)) + (Math.random() * 2 - 1)));
+
         const prediction = {
           game_id: game.game_id,
-          home_win_probability: 0.5 + (Math.random() * 0.2 - 0.1), // 40-60%
-          away_win_probability: 0.5 + (Math.random() * 0.2 - 0.1), // 40-60%
-          predicted_home_score: Math.round(4 + Math.random() * 6), // 4-10 runs
-          predicted_away_score: Math.round(4 + Math.random() * 6), // 4-10 runs
+          home_win_probability: Math.round(homeWinProb * 1000) / 1000,
+          away_win_probability: Math.round(awayWinProb * 1000) / 1000,
+          predicted_home_score: Math.round(homeExpectedRuns),
+          predicted_away_score: Math.round(awayExpectedRuns),
           over_under_line: 8.5,
           over_probability: 0.5,
           under_probability: 0.5,
-          confidence_score: 0.7,
-          key_factors: { test: true },
+          confidence_score: 0.75,
+          key_factors: { 
+            home_win_pct: homeWinPct,
+            away_win_pct: awayWinPct,
+            home_runs_per_game: homeStats.runs_scored / Math.max(1, (homeStats.wins + homeStats.losses)),
+            away_runs_per_game: awayStats.runs_scored / Math.max(1, (awayStats.wins + awayStats.losses))
+          },
           prediction_date: new Date().toISOString()
         };
-
-        // Ensure probabilities sum to 1
-        const total = prediction.home_win_probability + prediction.away_win_probability;
-        prediction.home_win_probability = prediction.home_win_probability / total;
-        prediction.away_win_probability = prediction.away_win_probability / total;
 
         console.log(`Saving prediction for game ${game.game_id}...`);
         const { error: predError } = await supabase
