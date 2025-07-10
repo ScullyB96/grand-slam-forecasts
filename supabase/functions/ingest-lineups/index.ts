@@ -52,7 +52,7 @@ serve(async (req) => {
     console.log('Created job with ID:', jobId);
 
     // Get today's games that need lineups
-    const today = new Date().toISOString().split('T')[0];
+    const today = '2025-07-10'; // Force today for testing
     console.log('Fetching games for date:', today);
     
     const { data: games, error: gamesError } = await supabase
