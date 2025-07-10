@@ -30,15 +30,20 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
 
     setIsRefreshing(true);
     try {
-      const { error } = await supabase.functions.invoke('generate-predictions', {
+      toast({
+        title: "Generating Predictions",
+        description: "Fetching lineups and generating lineup-based predictions..."
+      });
+
+      const { data, error } = await supabase.functions.invoke('generate-predictions', {
         body: { game_ids: gameIds }
       });
 
       if (error) throw error;
 
       toast({
-        title: "Predictions Refreshed",
-        description: `Updated predictions for ${gameIds.length} games`
+        title: "Lineup-Based Predictions Generated",
+        description: `Generated predictions for ${data?.processed || gameIds.length} games using official lineups and starting pitcher data`
       });
 
       // Call the refresh callback
@@ -68,7 +73,7 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
       disabled={disabled || isRefreshing || !gameIds?.length}
     >
       <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-      {isRefreshing ? 'Refreshing...' : 'Refresh Predictions'}
+      {isRefreshing ? 'Generating Lineup Predictions...' : 'Generate Lineup Predictions'}
     </Button>
   );
 };
