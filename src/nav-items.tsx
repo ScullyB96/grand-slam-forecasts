@@ -1,9 +1,10 @@
 
-import { HomeIcon, BarChart3, TrendingUp, Calendar } from "lucide-react";
+import { HomeIcon, BarChart3, TrendingUp, Calendar, Settings } from "lucide-react";
 import HomePage from "./pages/HomePage.tsx";
 import Stats from "./pages/Stats.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import Predictions from "./pages/Predictions.tsx";
+import Admin from "./pages/Admin.tsx";
 
 /**
  * Central place for defining the navigation items. Used for navigation components and routing.
@@ -20,6 +21,12 @@ export const navItems = [
     to: "/predictions",
     icon: <TrendingUp className="h-4 w-4" />,
     page: <Predictions />,
+  },
+  {
+    title: "Admin",
+    to: "/admin",
+    icon: <Settings className="h-4 w-4" />,
+    page: <Admin />,
   },
   // Hidden until ready
   // {

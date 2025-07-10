@@ -1,10 +1,9 @@
 
 import React, { useState } from 'react';
 import { useGames } from '@/hooks/useGames';
-import { useScheduleDebug, useVerifyIngestion } from '@/hooks/useScheduleDebug';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Download, Bug, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Calendar, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import RefreshPredictionsButton from '@/components/RefreshPredictionsButton';
@@ -39,80 +38,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   selectedGameId
 }) => {
   const { data: games, isLoading, error, refetch } = useGames(selectedDate);
-  const { data: debugData, refetch: refetchDebug } = useScheduleDebug();
-  const { data: verificationData } = useVerifyIngestion(selectedDate);
-  const [isFetching, setIsFetching] = useState(false);
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
 
-  // Check if last run was successful and games were processed
-  const isLastRunSuccessful = debugData?.lastJob?.status === 'completed' || 
-                              (games && games.length > 0);
-
-  const handleFetchSchedule = async () => {
-    setIsFetching(true);
-    try {
-      console.log('Triggering schedule fetch...');
-      
-      const { data, error } = await supabase.functions.invoke('fetch-schedule', {
-        body: { date: selectedDate }
-      });
-      
-      if (error) {
-        console.error('Supabase function invoke error:', error);
-        
-        // Get debug information on error
-        try {
-          const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
-          console.log('Debug response after error:', debugResponse);
-        } catch (debugError) {
-          console.error('Failed to fetch debug info:', debugError);
-        }
-        
-        throw new Error(`Function invocation failed: ${error.message}`);
-      }
-
-      if (!data) {
-        throw new Error('No response received from fetch-schedule function');
-      }
-
-      console.log('Schedule fetch response:', data);
-
-      if (data.success) {
-        toast({
-          title: "Schedule Updated Successfully",
-          description: `Fetched ${data.gamesProcessed} games for ${selectedDate}. Verification: ${data.verification?.success ? 'Passed' : 'Failed'}`,
-          variant: data.verification?.success ? "default" : "destructive"
-        });
-
-        // Refresh both games and debug data
-        setTimeout(() => {
-          refetch();
-          refetchDebug();
-        }, 1000);
-      } else {
-        throw new Error(data.error || 'Schedule fetch failed');
-      }
-    } catch (error) {
-      console.error('Error fetching schedule:', error);
-      
-      // Try to get debug information
-      try {
-        const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
-        console.log('Debug response after error:', debugResponse);
-      } catch (debugError) {
-        console.error('Failed to fetch debug info:', debugError);
-      }
-      
-      toast({
-        title: "Schedule Fetch Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    } finally {
-      setIsFetching(false);
-    }
-  };
 
   const handleGeneratePredictions = async () => {
     if (!games || games.length === 0) {
@@ -156,96 +84,6 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     }
   };
 
-  const handleIngestTeamStats = async () => {
-    try {
-      toast({
-        title: "Ingesting Team Statistics",
-        description: "Fetching current season team stats from MLB API..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-team-stats');
-      if (error) throw error;
-
-      toast({
-        title: "Team Stats Ingested Successfully",
-        description: "Current season team statistics have been updated"
-      });
-    } catch (error) {
-      console.error('Error ingesting team stats:', error);
-      toast({
-        title: "Team Stats Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleIngestParkFactors = async () => {
-    try {
-      toast({
-        title: "Ingesting Park Factors",
-        description: "Updating ballpark factors for all venues..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-park-factors');
-      if (error) throw error;
-
-      toast({
-        title: "Park Factors Ingested Successfully",
-        description: "Ballpark factors have been updated for all venues"
-      });
-    } catch (error) {
-      console.error('Error ingesting park factors:', error);
-      toast({
-        title: "Park Factors Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleIngestWeatherData = async () => {
-    try {
-      toast({
-        title: "Ingesting Weather Data",
-        description: "Fetching weather forecasts for upcoming games..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-weather-data');
-      if (error) throw error;
-
-      toast({
-        title: "Weather Data Ingested Successfully",
-        description: "Weather forecasts have been updated for upcoming games"
-      });
-    } catch (error) {
-      console.error('Error ingesting weather data:', error);
-      toast({
-        title: "Weather Data Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleShowDebugLogs = () => {
-    if (debugData?.lastJob) {
-      console.log('=== SCHEDULE DEBUG INFO ===');
-      console.log('Last Job Details:', debugData.lastJob);
-      console.log('Summary:', debugData.summary);
-      console.log('=== END DEBUG INFO ===');
-      
-      toast({
-        title: "Debug Information",
-        description: `Last job: ${debugData.lastJob.status}. Check console for details.`
-      });
-    } else {
-      toast({
-        title: "No Debug Data",
-        description: "No recent ingestion jobs found."
-      });
-    }
-  };
 
   const formatDisplayDate = (dateStr: string) => {
     // Parse date as local date to avoid timezone shifts
@@ -292,18 +130,6 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={handleFetchSchedule} 
-              disabled={isFetching}
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {isFetching ? 'Fetching...' : 'Fetch Schedule'}
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleShowDebugLogs}>
-              <Bug className="h-4 w-4 mr-2" />
-              Debug Logs
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -337,7 +163,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <Calendar className="h-5 w-5" />
           Games for {formatDisplayDate(selectedDate)}
         </CardTitle>
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1">
           <Button
             variant="outline"
             size="sm"
@@ -346,45 +172,10 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleFetchSchedule}
-            disabled={isFetching}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            {isFetching ? 'Fetching...' : 'Fetch Schedule'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleShowDebugLogs}>
-            <Bug className="h-4 w-4 mr-2" />
-            Debug
-          </Button>
         </div>
       </CardHeader>
       
-      {/* Data Ingestion Controls */}
       <CardContent className="pt-0">
-        <div className="mb-4 p-3 bg-muted rounded-lg">
-          <h4 className="text-sm font-medium mb-2">🤖 Advanced ML Prediction Engine</h4>
-          <div className="flex gap-2 flex-wrap mb-2">
-            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('data-audit-engine', { body: { enable_mock_fallback: true } })}>
-              🔍 Data Audit
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('feature-engineering', { body: { target_date: selectedDate } })}>
-              🔧 Feature Engineering
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('ml-prediction-engine', { body: { game_ids: games?.map(g => g.game_id) } })}>
-              🧠 ML Predictions
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('model-validation', { body: { validation_type: 'all' } })}>
-              📊 Model Health
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Advanced ML pipeline with XGBoost + Monte Carlo, comprehensive validation, and real-time monitoring
-          </p>
-        </div>
-        
         <div className="flex gap-2 flex-wrap mb-4">
           <Button
             variant="default"
@@ -408,32 +199,6 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             />
           )}
         </div>
-        <div className="flex gap-2 mb-4 text-xs">
-          {debugData && (
-            <div className={`flex items-center gap-1 px-2 py-1 rounded ${
-              isLastRunSuccessful ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-            }`}>
-              {isLastRunSuccessful ? (
-                <CheckCircle className="h-3 w-3" />
-              ) : (
-                <XCircle className="h-3 w-3" />
-              )}
-              Last Run: {isLastRunSuccessful ? 'Success' : debugData.lastJob?.status || 'Failed'}
-            </div>
-          )}
-          {verificationData && (
-            <div className={`flex items-center gap-1 px-2 py-1 rounded ${
-              verificationData.success ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-            }`}>
-              {verificationData.success ? (
-                <CheckCircle className="h-3 w-3" />
-              ) : (
-                <AlertTriangle className="h-3 w-3" />
-              )}
-              DB: {verificationData.gameCount} games
-            </div>
-          )}
-        </div>
 
         <div className="mb-4">
           <input
@@ -450,17 +215,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               No games scheduled for this date
             </div>
             <div className="text-sm text-muted-foreground">
-              Try fetching the latest schedule from MLB or select a different date
+              No games found for this date. Try selecting a different date or use the Admin panel to fetch schedule data.
             </div>
             <div className="flex gap-2 justify-center">
-              <Button 
-                variant="outline" 
-                onClick={handleFetchSchedule}
-                disabled={isFetching}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                {isFetching ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
-              </Button>
               <Button 
                 variant="secondary"
                 onClick={() => {
