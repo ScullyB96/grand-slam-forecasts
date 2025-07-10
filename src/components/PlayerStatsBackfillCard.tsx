@@ -119,20 +119,82 @@ export const PlayerStatsBackfillCard = () => {
           </div>
         </div>
 
-        <Button 
-          onClick={handleRunBackfill} 
-          disabled={isPending || (!includeRosters && !includeBattingStats && !includePitchingStats)}
-          className="w-full"
-        >
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Running Player Stats Backfill...
-            </>
-          ) : (
-            'Run Player Stats Backfill'
-          )}
-        </Button>
+        <div className="grid grid-cols-1 gap-3">
+          <Button 
+            onClick={handleRunBackfill} 
+            disabled={isPending || (!includeRosters && !includeBattingStats && !includePitchingStats)}
+            className="w-full"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Running Player Stats Backfill...
+              </>
+            ) : (
+              'Run Player Stats Backfill'
+            )}
+          </Button>
+
+          <Button 
+            onClick={() => {
+              // Run comprehensive backfill for both 2025 rosters and 2024 stats
+              runBackfill({
+                season: 2025,
+                includeRosters: true,
+                includeBattingStats: false,
+                includePitchingStats: false,
+                force: false
+              }, {
+                onSuccess: () => {
+                  // After 2025 rosters, run 2024 stats
+                  runBackfill({
+                    season: 2024,
+                    includeRosters: false,
+                    includeBattingStats: true,
+                    includePitchingStats: true,
+                    force: false
+                  }, {
+                    onSuccess: (data) => {
+                      toast({
+                        title: "Real Data Implementation Complete",
+                        description: "Successfully ingested 2025 rosters and 2024 player statistics. Monte Carlo simulation now uses real MLB data!",
+                      });
+                    },
+                    onError: (error) => {
+                      toast({
+                        title: "2024 Stats Backfill Failed",
+                        description: error.message,
+                        variant: "destructive",
+                      });
+                    }
+                  });
+                },
+                onError: (error) => {
+                  toast({
+                    title: "2025 Roster Backfill Failed",
+                    description: error.message,
+                    variant: "destructive",
+                  });
+                }
+              });
+            }}
+            disabled={isPending}
+            variant="secondary"
+            className="w-full"
+          >
+            {isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Implementing Real Data Plan...
+              </>
+            ) : (
+              <>
+                <Target className="mr-2 h-4 w-4" />
+                Implement Real Data Plan (2025 Rosters + 2024 Stats)
+              </>
+            )}
+          </Button>
+        </div>
 
         <div className="text-sm text-muted-foreground">
           <p>This will ingest player data for the {season} season.</p>
