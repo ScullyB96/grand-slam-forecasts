@@ -21,8 +21,10 @@ export const useLineupIngestion = () => {
     mutationFn: async ({ date, force = false }: { date?: string; force?: boolean }) => {
       console.log('Starting lineup ingestion...', { date, force });
       
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      
       const { data, error } = await supabase.functions.invoke('ingest-lineups', {
-        body: { date, force }
+        body: { date: targetDate, force }
       });
 
       if (error) {

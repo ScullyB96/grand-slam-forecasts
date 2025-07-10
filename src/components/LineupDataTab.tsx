@@ -4,7 +4,10 @@ import { useGameLineups, GameLineup } from '@/hooks/useGameLineups';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Users, Zap } from 'lucide-react';
+import { Users, Zap, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useLineupIngestion } from '@/hooks/useLineupIngestion';
+import { useToast } from '@/hooks/use-toast';
 
 interface LineupDataTabProps {
   gameId: number;
@@ -13,9 +16,34 @@ interface LineupDataTabProps {
 }
 
 const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTeam }) => {
-  const { data: lineups, isLoading, error } = useGameLineups(gameId);
+  const { data: lineups, isLoading, error, refetch } = useGameLineups(gameId);
+  const lineupIngestion = useLineupIngestion();
+  const { toast } = useToast();
 
   console.log('LineupDataTab - gameId:', gameId, 'lineups:', lineups);
+
+  const handleRefreshLineups = async () => {
+    try {
+      await lineupIngestion.mutateAsync({
+        date: new Date().toISOString().split('T')[0],
+        force: true
+      });
+      
+      toast({
+        title: "Lineups Updated",
+        description: "Successfully refreshed lineup data from MLB API",
+      });
+      
+      // Refetch the lineups after successful ingestion
+      setTimeout(() => refetch(), 2000);
+    } catch (error) {
+      toast({
+        title: "Update Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -29,6 +57,14 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
     return (
       <div className="text-center text-destructive p-4">
         Error loading lineup data: {error.message}
+        <Button 
+          variant="outline" 
+          onClick={() => refetch()} 
+          className="mt-2 ml-2"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Retry
+        </Button>
       </div>
     );
   }
@@ -40,36 +76,63 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
         <h3 className="text-lg font-semibold mb-2">Official Lineups Not Yet Released</h3>
         <p>Official lineups have not been released by MLB for this game.</p>
         <p className="text-sm mt-2">Lineups are typically announced 1-2 hours before game time.</p>
-        <p className="text-sm mt-1 font-medium text-amber-600">⚠️ No mock lineups - only official MLB data is shown</p>
-        <p className="text-xs mt-2 text-muted-foreground">Check back closer to game time for official lineups.</p>
+        <Button 
+          onClick={handleRefreshLineups}
+          disabled={lineupIngestion.isPending}
+          className="mt-4"
+        >
+          {lineupIngestion.isPending ? (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+              Checking for Updates...
+            </>
+          ) : (
+            <>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Check for Official Lineups
+            </>
+          )}
+        </Button>
+        <p className="text-xs mt-2 text-muted-foreground">This will fetch the latest data from MLB's official API.</p>
       </div>
     );
   }
 
-  // Check if lineups are official or not available
+  // Check if lineups are official
   const hasOfficialLineups = lineups.some(lineup => 
-    lineup.player_name && 
-    !lineup.player_name.includes('Player (') && 
-    !lineup.player_name.includes('Mock') &&
-    lineup.player_id < 600000 // Real MLB player IDs are typically under this threshold
+    lineup.lineup_type === 'batting' && lineup.batting_order !== null
   );
 
   const LineupStatus = () => (
     <div className="mb-4 p-3 rounded-lg bg-muted/50 border">
-      <div className="flex items-center gap-2 text-sm">
-        {hasOfficialLineups ? (
-          <>
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span className="text-green-700 dark:text-green-400 font-medium">Official Lineups Confirmed</span>
-            <span className="text-xs text-muted-foreground ml-2">• Updated from MLB API</span>
-          </>
-        ) : (
-          <>
-            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-            <span className="text-red-700 dark:text-red-400 font-medium">Lineups Not Yet Available</span>
-            <span className="text-xs text-muted-foreground ml-2">• Check back closer to game time</span>
-          </>
-        )}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm">
+          {hasOfficialLineups ? (
+            <>
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-green-700 dark:text-green-400 font-medium">Official Lineups Confirmed</span>
+              <span className="text-xs text-muted-foreground ml-2">• Updated from MLB API</span>
+            </>
+          ) : (
+            <>
+              <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+              <span className="text-orange-700 dark:text-orange-400 font-medium">Partial Lineup Data</span>
+              <span className="text-xs text-muted-foreground ml-2">• Only pitchers available</span>
+            </>
+          )}
+        </div>
+        <Button 
+          size="sm" 
+          variant="outline" 
+          onClick={handleRefreshLineups}
+          disabled={lineupIngestion.isPending}
+        >
+          {lineupIngestion.isPending ? (
+            <RefreshCw className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+        </Button>
       </div>
     </div>
   );
@@ -78,7 +141,7 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
   const groupedLineups = lineups.reduce((acc, lineup) => {
     const teamKey = lineup.team_id === homeTeam?.id ? 'home' : 'away';
     if (!acc[teamKey]) acc[teamKey] = { batting: [], pitching: [] };
-    acc[teamKey][lineup.lineup_type as 'batting' | 'pitching'].push(lineup);
+    acc[teamKey][lineup.lineup_type].push(lineup);
     return acc;
   }, {} as { home?: { batting: GameLineup[], pitching: GameLineup[] }, away?: { batting: GameLineup[], pitching: GameLineup[] } });
 
@@ -122,11 +185,7 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
   };
 
   const renderPitchingLineup = (lineups: GameLineup[], teamName: string) => {
-    const pitchers = lineups.filter(lineup => 
-      lineup.position_code === 'P' || 
-      lineup.position_code === 'SP' || 
-      lineup.lineup_type === 'pitching'
-    );
+    const pitchers = lineups.filter(lineup => lineup.lineup_type === 'pitching');
 
     if (pitchers.length === 0) {
       return (
@@ -136,21 +195,40 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
       );
     }
 
+    const starters = pitchers.filter(p => p.is_starter);
+    const relievers = pitchers.filter(p => !p.is_starter);
+
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2 mb-3">
           <Zap className="h-4 w-4" />
-          <h4 className="font-semibold">{teamName} Starting Pitcher</h4>
+          <h4 className="font-semibold">{teamName} Pitchers</h4>
         </div>
-        {pitchers.map((player) => (
+        
+        {starters.map((player) => (
           <div key={player.id} className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded">
-            <span className="font-medium">{player.player_name}</span>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{player.position}</Badge>
-              <Badge variant="outline">{player.handedness}HP</Badge>
+              <Badge variant="default">SP</Badge>
+              <span className="font-medium">{player.player_name}</span>
             </div>
+            <Badge variant="outline">{player.handedness}HP</Badge>
           </div>
         ))}
+        
+        {relievers.length > 0 && (
+          <div className="mt-3">
+            <h5 className="text-sm font-medium text-muted-foreground mb-2">Relief Pitchers</h5>
+            {relievers.map((player) => (
+              <div key={player.id} className="flex items-center justify-between p-2 bg-muted/30 rounded mb-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">RP</Badge>
+                  <span className="text-sm">{player.player_name}</span>
+                </div>
+                <Badge variant="outline" className="text-xs">{player.handedness}HP</Badge>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -159,43 +237,43 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
     <div className="space-y-6">
       <LineupStatus />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {/* Away Team */}
-      {groupedLineups.away && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              {awayTeam?.name || 'Away Team'}
-              <Badge variant="secondary">Away</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {renderBattingLineup(groupedLineups.away.batting, awayTeam?.name || 'Away')}
-            {groupedLineups.away.batting.length > 0 && groupedLineups.away.pitching.length > 0 && 
-              <Separator />
-            }
-            {renderPitchingLineup(groupedLineups.away.pitching, awayTeam?.name || 'Away')}
-          </CardContent>
-        </Card>
-      )}
+        {/* Away Team */}
+        {groupedLineups.away && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                {awayTeam?.name || 'Away Team'}
+                <Badge variant="secondary">Away</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {renderBattingLineup(groupedLineups.away.batting, awayTeam?.name || 'Away')}
+              {(groupedLineups.away.batting.length > 0 || groupedLineups.away.pitching.length > 0) && 
+                <Separator />
+              }
+              {renderPitchingLineup(groupedLineups.away.pitching, awayTeam?.name || 'Away')}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Home Team */}
-      {groupedLineups.home && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              {homeTeam?.name || 'Home Team'}
-              <Badge variant="secondary">Home</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {renderBattingLineup(groupedLineups.home.batting, homeTeam?.name || 'Home')}
-            {groupedLineups.home.batting.length > 0 && groupedLineups.home.pitching.length > 0 && 
-              <Separator />
-            }
-            {renderPitchingLineup(groupedLineups.home.pitching, homeTeam?.name || 'Home')}
-          </CardContent>
-        </Card>
-      )}
+        {/* Home Team */}
+        {groupedLineups.home && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                {homeTeam?.name || 'Home Team'}
+                <Badge variant="secondary">Home</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {renderBattingLineup(groupedLineups.home.batting, homeTeam?.name || 'Home')}
+              {(groupedLineups.home.batting.length > 0 || groupedLineups.home.pitching.length > 0) && 
+                <Separator />
+              }
+              {renderPitchingLineup(groupedLineups.home.pitching, homeTeam?.name || 'Home')}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

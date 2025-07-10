@@ -2,30 +2,12 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getSchedule, getGameBoxscore, extractLineupsFromBoxscore, createTeamIdMapping } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-interface LineupPlayer {
-  id: number;
-  fullName: string;
-  battingOrder?: number;
-  position: {
-    code: string;
-    name: string;
-  };
-}
-
-interface GameLineup {
-  team: {
-    id: number;
-    name: string;
-  };
-  batters: LineupPlayer[];
-  pitchers: LineupPlayer[];
-}
 
 serve(async (req) => {
   console.log('=== LINEUP INGESTION FUNCTION STARTED ===');
@@ -78,20 +60,32 @@ serve(async (req) => {
       throw new Error(`Failed to create ingestion job: ${jobError.message}`);
     }
 
-    // Step 1: Get today's games from MLB API
-    console.log('📅 Step 1: Fetching schedule from MLB API...');
-    const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${targetDate}&hydrate=team,linescore`;
-    const scheduleResponse = await fetch(scheduleUrl);
-    
-    if (!scheduleResponse.ok) {
-      throw new Error(`Failed to fetch schedule: ${scheduleResponse.statusText}`);
+    // Step 1: Get team mapping from our database
+    console.log('🏈 Step 1: Creating team mapping...');
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('id, team_id, name, abbreviation');
+
+    if (teamsError) {
+      throw new Error('Failed to fetch teams: ' + teamsError.message);
     }
 
-    const scheduleData = await scheduleResponse.json();
-    const games = scheduleData.dates?.[0]?.games || [];
-    
-    if (games.length === 0) {
-      console.log(`No games found for ${targetDate}`);
+    const teamIdMapping = createTeamIdMapping(teams || []);
+    console.log(`✅ Team mapping created with ${teamIdMapping.size} teams`);
+
+    // Step 2: Get games from our database for the target date
+    console.log('📅 Step 2: Fetching games from database...');
+    const { data: games, error: gamesError } = await supabase
+      .from('games')
+      .select('game_id, home_team_id, away_team_id')
+      .eq('game_date', targetDate);
+
+    if (gamesError) {
+      throw new Error('Failed to fetch games: ' + gamesError.message);
+    }
+
+    if (!games || games.length === 0) {
+      console.log(`No games found in database for ${targetDate}`);
       
       await supabase
         .from('lineup_ingestion_jobs')
@@ -105,7 +99,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         success: true,
-        message: `No games scheduled for ${targetDate}`,
+        message: `No games found in database for ${targetDate}`,
         date: targetDate,
         games_processed: 0,
         games_expected: 0
@@ -114,7 +108,7 @@ serve(async (req) => {
       });
     }
 
-    console.log(`✅ Found ${games.length} games for ${targetDate}`);
+    console.log(`✅ Found ${games.length} games in database for ${targetDate}`);
 
     // Update job with expected games count
     await supabase
@@ -122,78 +116,91 @@ serve(async (req) => {
       .update({ games_expected: games.length })
       .eq('id', jobId);
 
-    // Step 2: Process each game and fetch lineups
+    // Step 3: Process each game and fetch lineups
     const results = [];
     const failedGames = [];
     let processedCount = 0;
 
     for (const game of games) {
       try {
-        console.log(`🏈 Processing game ${game.gamePk}: ${game.teams.away.team.name} @ ${game.teams.home.team.name}`);
+        console.log(`🏈 Processing game ${game.game_id}`);
 
         // Check if lineups already exist (unless force refresh)
         if (!forceRefresh) {
           const { data: existingLineups } = await supabase
-            .from('lineups')
+            .from('game_lineups')
             .select('id')
-            .eq('game_pk', game.gamePk)
+            .eq('game_id', game.game_id)
             .limit(1);
 
           if (existingLineups && existingLineups.length > 0) {
-            console.log(`⏭️ Lineups already exist for game ${game.gamePk}, skipping`);
+            console.log(`⏭️ Lineups already exist for game ${game.game_id}, skipping`);
             processedCount++;
             continue;
           }
         }
 
+        // Clear existing lineups if force refresh
+        if (forceRefresh) {
+          await supabase
+            .from('game_lineups')
+            .delete()
+            .eq('game_id', game.game_id);
+        }
+
         // Fetch lineups from MLB API
-        const lineupUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
-        const lineupResponse = await fetch(lineupUrl);
+        console.log(`📥 Fetching lineup data for game ${game.game_id}`);
+        const boxscoreData = await getGameBoxscore(game.game_id);
         
-        if (!lineupResponse.ok) {
-          console.error(`Failed to fetch lineup for game ${game.gamePk}`);
+        if (!boxscoreData) {
+          console.log(`❌ No boxscore data available for game ${game.game_id}`);
           failedGames.push({
-            gamePk: game.gamePk,
-            error: `Failed to fetch lineup: ${lineupResponse.statusText}`
+            gamePk: game.game_id,
+            error: 'No boxscore data available'
           });
           continue;
         }
 
-        const lineupData = await lineupResponse.json();
+        // Extract lineups using the shared MLB API helper
+        const lineups = extractLineupsFromBoxscore(boxscoreData, null, teamIdMapping);
         
-        // Extract lineup data for both teams
-        const awayTeam = lineupData.teams?.away;
-        const homeTeam = lineupData.teams?.home;
-
-        if (!awayTeam || !homeTeam) {
-          console.error(`Invalid lineup data for game ${game.gamePk}`);
+        if (lineups.length === 0) {
+          console.log(`⚠️ No lineup data extracted for game ${game.game_id}`);
           failedGames.push({
-            gamePk: game.gamePk,
-            error: 'Invalid lineup data structure'
+            gamePk: game.game_id,
+            error: 'No lineup data could be extracted'
           });
           continue;
         }
 
-        // Process away team lineup
-        await processTeamLineup(supabase, game.gamePk, awayTeam, targetDate, forceRefresh);
-        
-        // Process home team lineup  
-        await processTeamLineup(supabase, game.gamePk, homeTeam, targetDate, forceRefresh);
+        // Insert lineups into game_lineups table
+        console.log(`💾 Inserting ${lineups.length} lineup entries for game ${game.game_id}`);
+        const { error: insertError } = await supabase
+          .from('game_lineups')
+          .insert(lineups);
+
+        if (insertError) {
+          console.error(`❌ Error inserting lineups for game ${game.game_id}:`, insertError);
+          failedGames.push({
+            gamePk: game.game_id,
+            error: `Insert error: ${insertError.message}`
+          });
+          continue;
+        }
 
         processedCount++;
         results.push({
-          gamePk: game.gamePk,
-          awayTeam: game.teams.away.team.name,
-          homeTeam: game.teams.home.team.name,
+          gamePk: game.game_id,
+          lineupsInserted: lineups.length,
           status: 'success'
         });
 
-        console.log(`✅ Successfully processed game ${game.gamePk}`);
+        console.log(`✅ Successfully processed game ${game.game_id} with ${lineups.length} lineup entries`);
 
       } catch (error) {
-        console.error(`❌ Error processing game ${game.gamePk}:`, error);
+        console.error(`❌ Error processing game ${game.game_id}:`, error);
         failedGames.push({
-          gamePk: game.gamePk,
+          gamePk: game.game_id,
           error: error.message
         });
       }
@@ -244,70 +251,3 @@ serve(async (req) => {
     });
   }
 });
-
-async function processTeamLineup(supabase: any, gamePk: number, teamData: any, date: string, forceRefresh: boolean) {
-  const teamId = teamData.team?.id;
-  if (!teamId) {
-    console.error('No team ID found in team data');
-    return;
-  }
-
-  // Clear existing lineups if force refresh
-  if (forceRefresh) {
-    await supabase
-      .from('lineups')
-      .delete()
-      .eq('game_pk', gamePk)
-      .eq('team_id', teamId);
-  }
-
-  // Process batters
-  const batters = teamData.batters || [];
-  for (let i = 0; i < batters.length; i++) {
-    const playerId = batters[i];
-    const playerInfo = teamData.players?.[`ID${playerId}`];
-    
-    if (playerInfo?.person) {
-      const battingOrder = i + 1; // Batting order starts at 1
-      const position = playerInfo.position;
-      
-      await supabase
-        .from('lineups')
-        .upsert({
-          game_pk: gamePk,
-          team_id: teamId,
-          player_id: playerInfo.person.id,
-          player_name: playerInfo.person.fullName,
-          batting_order: battingOrder,
-          position_code: position?.code || null,
-          date: date
-        }, {
-          onConflict: 'game_pk,player_id'
-        });
-    }
-  }
-
-  // Process pitchers (starters and relievers)
-  const pitchers = teamData.pitchers || [];
-  for (const playerId of pitchers) {
-    const playerInfo = teamData.players?.[`ID${playerId}`];
-    
-    if (playerInfo?.person) {
-      await supabase
-        .from('lineups')
-        .upsert({
-          game_pk: gamePk,
-          team_id: teamId,
-          player_id: playerInfo.person.id,
-          player_name: playerInfo.person.fullName,
-          batting_order: null, // Pitchers don't have batting order
-          position_code: 'P',
-          date: date
-        }, {
-          onConflict: 'game_pk,player_id'
-        });
-    }
-  }
-
-  console.log(`✅ Processed lineup for team ${teamId} in game ${gamePk}`);
-}
