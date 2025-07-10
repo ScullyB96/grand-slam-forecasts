@@ -637,6 +637,8 @@ function createMockLineups(games: any[]) {
   return lineups;
 }
 
+IMPORTANT: supabase/functions/ingest-lineups/index.ts is 655 lines long. If you make any modifications to it, let the user know that they should consider asking you to refactor it after completing the lov-code block.
+
 function getPositionFromOrder(order: number): string {
   const positions = ['C', '1B', '2B', '3B', 'SS', 'LF', 'CF', 'RF', 'DH'];
   return positions[order - 1] || 'DH';

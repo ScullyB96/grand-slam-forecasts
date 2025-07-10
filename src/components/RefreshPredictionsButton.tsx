@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Search, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useGeneratePredictions } from '@/hooks/useMonteCarloSimulation';
+import { supabase } from '@/integrations/supabase/client';
 
 interface RefreshPredictionsButtonProps {
   gameIds: number[];
@@ -17,6 +18,8 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
 }) => {
   const { toast } = useToast();
   const { mutate: generatePredictions, isPending } = useGeneratePredictions();
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  const [isIngesting, setIsIngesting] = useState(false);
 
   const handleRefreshPredictions = () => {
     if (!gameIds || gameIds.length === 0) {
@@ -58,16 +61,113 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
     });
   };
 
+  const handleMonitorLineups = async () => {
+    setIsMonitoring(true);
+    
+    try {
+      toast({
+        title: "Monitoring Lineups",
+        description: "Checking for confirmed official lineups..."
+      });
+
+      const { data, error } = await supabase.functions.invoke('lineup-monitor', {
+        body: { source: 'manual' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Lineup Monitoring Complete",
+        description: `Checked ${data.checked} games, updated ${data.updated} with official lineups`,
+        variant: data.updated > 0 ? "default" : "destructive"
+      });
+
+      if (data.updated > 0 && onRefresh) {
+        setTimeout(() => {
+          onRefresh();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error monitoring lineups:', error);
+      toast({
+        title: "Monitor Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsMonitoring(false);
+    }
+  };
+
+  const handleIngestLineups = async () => {
+    setIsIngesting(true);
+    
+    try {
+      toast({
+        title: "Ingesting Lineups",
+        description: "Fetching projected lineups from Rotowire and MLB API..."
+      });
+
+      const { data, error } = await supabase.functions.invoke('ingest-lineups', {
+        body: { source: 'manual' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Lineup Ingestion Complete",
+        description: `${data.message} (${data.official_lineups} official, ${data.processed - data.official_lineups} projected)`,
+      });
+
+      if (onRefresh) {
+        setTimeout(() => {
+          onRefresh();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error ingesting lineups:', error);
+      toast({
+        title: "Ingestion Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsIngesting(false);
+    }
+  };
+
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleRefreshPredictions}
-      disabled={disabled || isPending || !gameIds?.length}
-    >
-      <RefreshCw className={`h-4 w-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
-      {isPending ? 'Generating Monte Carlo Predictions...' : 'Generate Monte Carlo Predictions'}
-    </Button>
+    <div className="flex gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleIngestLineups}
+        disabled={disabled || isIngesting}
+      >
+        <Download className={`h-4 w-4 mr-2 ${isIngesting ? 'animate-spin' : ''}`} />
+        {isIngesting ? 'Ingesting...' : 'Ingest Lineups'}
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleMonitorLineups}
+        disabled={disabled || isMonitoring}
+      >
+        <Search className={`h-4 w-4 mr-2 ${isMonitoring ? 'animate-spin' : ''}`} />
+        {isMonitoring ? 'Monitoring...' : 'Check Official Lineups'}
+      </Button>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleRefreshPredictions}
+        disabled={disabled || isPending || !gameIds?.length}
+      >
+        <RefreshCw className={`h-4 w-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
+        {isPending ? 'Generating Monte Carlo Predictions...' : 'Generate Monte Carlo Predictions'}
+      </Button>
+    </div>
   );
 };
 
