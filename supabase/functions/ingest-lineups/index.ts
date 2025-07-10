@@ -148,7 +148,7 @@ serve(async (req) => {
             .eq('game_id', game.game_id);
         }
 
-        // Fetch lineups from MLB API
+        // Fetch lineups from MLB API with enhanced debugging
         console.log(`📥 Fetching lineup data for game ${game.game_id}`);
         const boxscoreData = await getGameBoxscore(game.game_id);
         
@@ -161,8 +161,38 @@ serve(async (req) => {
           continue;
         }
 
-        // Extract lineups using the shared MLB API helper
+        // DEBUG: Log the raw structure to understand the JSON
+        console.log(`🔍 DEBUG - Raw boxscore structure for game ${game.game_id}:`);
+        console.log(`  - Has teams: ${!!boxscoreData.teams}`);
+        console.log(`  - Teams keys: ${boxscoreData.teams ? Object.keys(boxscoreData.teams) : 'none'}`);
+        
+        if (boxscoreData.teams?.home) {
+          console.log(`  - Home team keys: ${Object.keys(boxscoreData.teams.home)}`);
+          console.log(`  - Home batters array length: ${boxscoreData.teams.home.batters?.length || 0}`);
+          console.log(`  - Home pitchers array length: ${boxscoreData.teams.home.pitchers?.length || 0}`);
+          console.log(`  - Home players object keys count: ${boxscoreData.teams.home.players ? Object.keys(boxscoreData.teams.home.players).length : 0}`);
+        }
+        
+        if (boxscoreData.teams?.away) {
+          console.log(`  - Away team keys: ${Object.keys(boxscoreData.teams.away)}`);
+          console.log(`  - Away batters array length: ${boxscoreData.teams.away.batters?.length || 0}`);
+          console.log(`  - Away pitchers array length: ${boxscoreData.teams.away.pitchers?.length || 0}`);
+          console.log(`  - Away players object keys count: ${boxscoreData.teams.away.players ? Object.keys(boxscoreData.teams.away.players).length : 0}`);
+        }
+
+        // Extract lineups using the shared MLB API helper with enhanced debugging
         const lineups = extractLineupsFromBoxscore(boxscoreData, null, teamIdMapping);
+        
+        console.log(`📊 Lineup extraction results for game ${game.game_id}:`);
+        console.log(`  - Total lineups extracted: ${lineups.length}`);
+        const battingLineups = lineups.filter(l => l.lineup_type === 'batting');
+        const pitchingLineups = lineups.filter(l => l.lineup_type === 'pitching');
+        console.log(`  - Batting lineups: ${battingLineups.length}`);
+        console.log(`  - Pitching lineups: ${pitchingLineups.length}`);
+        
+        if (battingLineups.length > 0) {
+          console.log(`  - Batting orders found: ${battingLineups.map(b => b.batting_order).sort((a, b) => a - b)}`);
+        }
         
         if (lineups.length === 0) {
           console.log(`⚠️ No lineup data extracted for game ${game.game_id}`);
@@ -192,10 +222,12 @@ serve(async (req) => {
         results.push({
           gamePk: game.game_id,
           lineupsInserted: lineups.length,
+          battingLineups: battingLineups.length,
+          pitchingLineups: pitchingLineups.length,
           status: 'success'
         });
 
-        console.log(`✅ Successfully processed game ${game.game_id} with ${lineups.length} lineup entries`);
+        console.log(`✅ Successfully processed game ${game.game_id} with ${lineups.length} lineup entries (${battingLineups.length} batting, ${pitchingLineups.length} pitching)`);
 
       } catch (error) {
         console.error(`❌ Error processing game ${game.game_id}:`, error);
