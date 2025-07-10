@@ -41,6 +41,10 @@ interface WeatherData {
 }
 
 Deno.serve(async (req) => {
+  console.log('=== GENERATE PREDICTIONS FUNCTION CALLED ===');
+  console.log('Request method:', req.method);
+  console.log('Request URL:', req.url);
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -56,6 +60,7 @@ Deno.serve(async (req) => {
     console.log('Request body:', requestBody);
     
     const { game_ids } = requestBody;
+    console.log('Game IDs to process:', game_ids);
     
     // Log job start
     console.log('Starting prediction generation job');
@@ -191,7 +196,9 @@ async function getGamesToPredict(supabase: any, gameIds?: number[]): Promise<Gam
 
   if (gameIds && gameIds.length > 0) {
     query = query.in('game_id', gameIds);
+    console.log('Filtering for specific game IDs:', gameIds);
   } else {
+    console.log('No specific game IDs provided, getting all scheduled games for next 7 days');
     // Get games for next 7 days
     const nextWeek = new Date();
     nextWeek.setDate(nextWeek.getDate() + 7);
@@ -201,7 +208,11 @@ async function getGamesToPredict(supabase: any, gameIds?: number[]): Promise<Gam
   }
 
   const { data, error } = await query;
-  if (error) throw error;
+  if (error) {
+    console.error('Error fetching games from database:', error);
+    throw error;
+  }
+  console.log(`Found ${data?.length || 0} games in database matching criteria`);
   return data || [];
 }
 

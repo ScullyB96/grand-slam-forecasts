@@ -53,11 +53,11 @@ interface MLBScheduleResponse {
 }
 
 async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
-  // Ensure date is in YYYY-MM-DD format
+  // Format date properly for MLB API - they expect YYYY-MM-DD format in EST
   const formattedDate = date.split('T')[0]; // Remove time component if present
-  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${formattedDate}&hydrate=team,venue`;
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${formattedDate}&hydrate=team,venue&timeZone=America/New_York`;
   
-  console.log(`Fetching MLB schedule for ${formattedDate}`, { url });
+  console.log(`Fetching MLB schedule for ${formattedDate} (EST timezone)`, { url });
   
   try {
     const response = await fetch(url);
@@ -88,12 +88,20 @@ async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
       return [];
     }
     
+    // Collect ALL games from ALL dates in response (handles timezone edge cases)
     const games = data.dates.flatMap(dateEntry => {
+      console.log(`Processing date entry: ${JSON.stringify(dateEntry, null, 2).substring(0, 200)}`);
       if (!dateEntry.games || !Array.isArray(dateEntry.games)) {
         console.warn('Date entry missing games array', dateEntry);
         return [];
       }
-      return dateEntry.games;
+      return dateEntry.games.filter(game => {
+        // Filter games to ensure we get all games for the target date in EST
+        const gameDate = new Date(game.gameDate);
+        const gameDateEST = gameDate.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD in EST
+        console.log(`Game ${game.gamePk}: Original date ${game.gameDate}, EST date ${gameDateEST}, target ${formattedDate}`);
+        return gameDateEST === formattedDate;
+      });
     });
     
     console.log(`Successfully fetched ${games.length} games from MLB API`);
@@ -289,15 +297,17 @@ async function processGames(supabase: any, games: MLBGame[]) {
         continue;
       }
       
-      const gameDate = gameDateTime.toISOString().split('T')[0];
-      // Format time in EST/EDT timezone properly
-      const gameTime = gameDateTime.toLocaleTimeString('en-US', {
+      // Parse the game date/time and ensure it's in EST
+      const gameDateEST = gameDateTime.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD in EST
+      const gameTimeEST = gameDateTime.toLocaleTimeString('en-US', { 
         timeZone: 'America/New_York',
         hour12: false,
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit'
       });
+      
+      console.log(`Game ${game.gamePk}: Original ${game.gameDate} -> EST Date: ${gameDateEST}, EST Time: ${gameTimeEST}`);
 
       // Map status with more robust handling
       let status = 'scheduled';
@@ -314,8 +324,8 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
       const gameData = {
         game_id: game.gamePk,
-        game_date: gameDate,
-        game_time: gameTime,
+        game_date: gameDateEST,  // Use EST date
+        game_time: gameTimeEST,  // Use EST time
         home_team_id: homeTeamId,
         away_team_id: awayTeamId,
         venue_name: game.venue?.name,
@@ -326,7 +336,7 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
       console.log(`Upserting game ${game.gamePk}`, gameData);
 
-      console.log(`Attempting to upsert game ${game.gamePk}:`, gameData);
+      
       
       const { error } = await supabase
         .from('games')
