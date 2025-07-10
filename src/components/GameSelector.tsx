@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Calendar, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import RefreshPredictionsButton from '@/components/RefreshPredictionsButton';
 
 interface Game {
   id: number;
@@ -40,7 +39,6 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   const { data: games, isLoading, error, refetch } = useGames(selectedDate);
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
-
 
   const handleGeneratePredictions = async () => {
     if (!games || games.length === 0) {
@@ -84,7 +82,6 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     }
   };
 
-
   const formatDisplayDate = (dateStr: string) => {
     // Parse date as local date to avoid timezone shifts
     const [year, month, day] = dateStr.split('-').map(Number);
@@ -125,12 +122,10 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <p className="text-sm text-muted-foreground mb-4">
             Failed to load games: {error.message}
           </p>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
-            </Button>
-          </div>
+          <Button variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );
@@ -163,43 +158,17 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <Calendar className="h-5 w-5" />
           Games for {formatDisplayDate(selectedDate)}
         </CardTitle>
-        <div className="flex gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isLoading}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => refetch()}
+          disabled={isLoading}
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </CardHeader>
       
       <CardContent className="pt-0">
-        <div className="flex gap-2 flex-wrap mb-4">
-          <Button
-            variant="default"
-            size="sm"
-            onClick={handleGeneratePredictions}
-            disabled={generatingPredictions || !games?.length}
-          >
-            {generatingPredictions ? (
-              <>
-                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              'Generate Predictions'
-            )}
-          </Button>
-          {games && games.length > 0 && (
-            <RefreshPredictionsButton
-              gameIds={games.map(g => g.game_id)}
-              onRefresh={() => refetch()}
-            />
-          )}
-        </div>
-
         <div className="mb-4">
           <input
             type="date"
@@ -208,6 +177,27 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             className="px-3 py-2 border rounded-md w-full max-w-xs"
           />
         </div>
+
+        {games && games.length > 0 && (
+          <div className="mb-4">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleGeneratePredictions}
+              disabled={generatingPredictions}
+              className="w-full"
+            >
+              {generatingPredictions ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Generating Predictions...
+                </>
+              ) : (
+                'Generate Predictions'
+              )}
+            </Button>
+          </div>
+        )}
         
         {!games || games.length === 0 ? (
           <div className="text-center py-8 space-y-4">
@@ -217,19 +207,17 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             <div className="text-sm text-muted-foreground">
               No games found for this date. Try selecting a different date or use the Admin panel to fetch schedule data.
             </div>
-            <div className="flex gap-2 justify-center">
-              <Button 
-                variant="secondary"
-                onClick={() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  onDateChange(tomorrow.toISOString().split('T')[0]);
-                }}
-              >
-                <Calendar className="h-4 w-4 mr-2" />
-                Try Tomorrow
-              </Button>
-            </div>
+            <Button 
+              variant="secondary"
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                onDateChange(tomorrow.toISOString().split('T')[0]);
+              }}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Try Tomorrow
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">
