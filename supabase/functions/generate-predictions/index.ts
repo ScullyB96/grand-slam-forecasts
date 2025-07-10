@@ -92,7 +92,8 @@ serve(async (req) => {
 
     for (const game of games) {
       try {
-        console.log(`Processing game ${game.game_id}`);
+        console.log(`=== PROCESSING GAME ${game.game_id} ===`);
+        console.log(`Home team: ${game.home_team_id}, Away team: ${game.away_team_id}, Venue: ${game.venue_name}`);
         
         // Check if prediction already exists (idempotency)
         const existingPrediction = await checkExistingPrediction(supabase, game.game_id);
@@ -103,12 +104,22 @@ serve(async (req) => {
 
         // Gather all data needed for prediction
         console.log(`Gathering data for game ${game.game_id}`);
-        const [homeStats, awayStats, parkFactors, weather] = await Promise.all([
-          getTeamStats(supabase, game.home_team_id),
-          getTeamStats(supabase, game.away_team_id),
-          getParkFactors(supabase, game.venue_name),
-          getWeatherData(supabase, game.game_id)
-        ]);
+        
+        console.log(`Fetching home team stats for team ${game.home_team_id}...`);
+        const homeStats = await getTeamStats(supabase, game.home_team_id);
+        console.log(`✓ Home team stats retrieved`);
+        
+        console.log(`Fetching away team stats for team ${game.away_team_id}...`);
+        const awayStats = await getTeamStats(supabase, game.away_team_id);
+        console.log(`✓ Away team stats retrieved`);
+        
+        console.log(`Fetching park factors for venue ${game.venue_name}...`);
+        const parkFactors = await getParkFactors(supabase, game.venue_name);
+        console.log(`✓ Park factors retrieved`);
+        
+        console.log(`Fetching weather data for game ${game.game_id}...`);
+        const weather = await getWeatherData(supabase, game.game_id);
+        console.log(`✓ Weather data retrieved`);
 
         // Generate prediction using Monte Carlo simulation
         console.log(`Generating prediction for game ${game.game_id}`);
@@ -119,10 +130,11 @@ serve(async (req) => {
         await upsertPrediction(supabase, prediction);
         
         processedCount++;
-        console.log(`Generated prediction for game ${game.game_id}`);
+        console.log(`✓ SUCCESSFULLY generated prediction for game ${game.game_id}`);
         
       } catch (error) {
-        console.error(`Error processing game ${game.game_id}:`, error);
+        console.error(`❌ ERROR processing game ${game.game_id}:`, error);
+        console.error(`Error details:`, error.message, error.stack);
         errorCount++;
       }
     }
