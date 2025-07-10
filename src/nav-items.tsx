@@ -1,6 +1,6 @@
 
 import { HomeIcon, BarChart3, TrendingUp, Calendar } from "lucide-react";
-import Index from "./pages/Index.tsx";
+import HomePage from "./pages/HomePage.tsx";
 import Stats from "./pages/Stats.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import Predictions from "./pages/Predictions.tsx";
@@ -13,7 +13,7 @@ export const navItems = [
     title: "Home",
     to: "/",
     icon: <HomeIcon className="h-4 w-4" />,
-    page: <Index />,
+    page: <HomePage />,
   },
   {
     title: "Dashboard",
