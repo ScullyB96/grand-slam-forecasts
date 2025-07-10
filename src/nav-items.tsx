@@ -1,8 +1,9 @@
 
-import { HomeIcon, BarChart3Icon, TrendingUpIcon } from "lucide-react";
-import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
-import Stats from "./pages/Stats";
+import { HomeIcon, BarChart3, TrendingUp, Calendar } from "lucide-react";
+import Index from "./pages/Index.tsx";
+import Stats from "./pages/Stats.tsx";
+import Dashboard from "./pages/Dashboard.tsx";
+import Predictions from "./pages/Predictions.tsx";
 
 /**
  * Central place for defining the navigation items. Used for navigation components and routing.
@@ -17,13 +18,19 @@ export const navItems = [
   {
     title: "Dashboard",
     to: "/dashboard",
-    icon: <BarChart3Icon className="h-4 w-4" />,
+    icon: <Calendar className="h-4 w-4" />,
     page: <Dashboard />,
   },
   {
-    title: "Statistics",
-    to: "/stats", 
-    icon: <TrendingUpIcon className="h-4 w-4" />,
+    title: "Predictions",
+    to: "/predictions",
+    icon: <TrendingUp className="h-4 w-4" />,
+    page: <Predictions />,
+  },
+  {
+    title: "Stats",
+    to: "/stats",
+    icon: <BarChart3 className="h-4 w-4" />,
     page: <Stats />,
   },
 ];
