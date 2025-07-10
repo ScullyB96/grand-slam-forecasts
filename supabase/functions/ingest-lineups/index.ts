@@ -77,10 +77,37 @@ serve(async (req) => {
     jobId = jobRecord.id;
     console.log('Created job with ID:', jobId);
 
-    // Get games for the target date
-    console.log('Fetching games for date:', targetDate);
+    // Step 1: Validate games exist in MLB schedule first
+    console.log('🔍 Validating games against MLB schedule API...');
+    const scheduleData = await getSchedule(targetDate);
+    const validMLBGames = scheduleData.dates?.[0]?.games || [];
+    const validGameIds = new Set(validMLBGames.map(game => game.gamePk));
     
-    const { data: games, error: gamesError } = await supabase
+    console.log(`Found ${validMLBGames.length} valid games in MLB schedule`);
+    
+    if (validMLBGames.length === 0) {
+      console.log(`No games in MLB schedule for ${targetDate}`);
+      await supabase
+        .from('data_ingestion_jobs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          records_processed: 0
+        })
+        .eq('id', jobId);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `No games in MLB schedule for ${targetDate}`,
+        processed: 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Step 2: Get games from database that exist in MLB schedule
+    console.log('📊 Fetching games from database...');
+    const { data: allGames, error: gamesError } = await supabase
       .from('games')
       .select(`
         game_id,
@@ -90,15 +117,22 @@ serve(async (req) => {
         home_team:teams!games_home_team_id_fkey(id, name, abbreviation),
         away_team:teams!games_away_team_id_fkey(id, name, abbreviation)
       `)
-      .eq('game_date', targetDate)
-      .eq('status', 'scheduled');
+      .eq('game_date', targetDate);
 
     if (gamesError) {
       console.error('Error fetching games:', gamesError);
       throw new Error('Failed to fetch games: ' + gamesError.message);
     }
 
-    console.log(`Found ${games?.length || 0} games for ${targetDate}`);
+    // Filter to only games that exist in MLB schedule
+    const games = allGames?.filter(game => validGameIds.has(game.game_id)) || [];
+    const invalidGames = allGames?.filter(game => !validGameIds.has(game.game_id)) || [];
+    
+    if (invalidGames.length > 0) {
+      console.log(`⚠️ Found ${invalidGames.length} games in database not in MLB schedule - these should be cleaned up`);
+    }
+
+    console.log(`Found ${games.length} valid games for ${targetDate} (filtered from ${allGames?.length || 0} database games)`);
 
     if (!games || games.length === 0) {
       console.log(`No games found for ${targetDate}, completing job`);
@@ -201,10 +235,15 @@ serve(async (req) => {
       }
     }
 
-    // STEP 3: Log games without lineups (no mock creation)
+    // STEP 3: Log games without lineups (no mock creation - strict policy)
     console.log('🔍 Step 3: Checking games without official lineups...');
     
     const gamesWithoutLineups = games.filter(game => 
+      !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
+    );
+
+    const gamesWithPitchersOnly = games.filter(game => 
+      lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'pitching') &&
       !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
     );
 
@@ -213,8 +252,13 @@ serve(async (req) => {
       gamesWithoutLineups.forEach(game => {
         console.log(`  - Game ${game.game_id}: ${game.away_team?.name} @ ${game.home_team?.name}`);
       });
-      console.log('These games will show "lineups not available" message to users.');
     }
+
+    if (gamesWithPitchersOnly.length > 0) {
+      console.log(`📌 ${gamesWithPitchersOnly.length} games have probable pitchers but no batting lineups`);
+    }
+
+    console.log('⚠️ NO MOCK LINEUPS will be created. Only official data from MLB API is used.');
 
     console.log(`Total lineups collected: ${lineups.length}`);
     

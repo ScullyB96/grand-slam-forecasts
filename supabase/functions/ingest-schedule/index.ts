@@ -53,7 +53,7 @@ interface MLBScheduleResponse {
 }
 
 async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
-  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}&hydrate=team,venue`;
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}&hydrate=team,venue,probablePitcher`;
   console.log(`Fetching MLB schedule for ${date} from: ${url}`);
   
   const response = await fetch(url);
@@ -64,7 +64,18 @@ async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
   const data: MLBScheduleResponse = await response.json();
   console.log(`MLB API returned ${data.dates.length} date(s)`);
   
-  return data.dates.flatMap(dateEntry => dateEntry.games);
+  // Filter out invalid games (games with status issues)
+  const validGames = data.dates.flatMap(dateEntry => 
+    dateEntry.games.filter(game => 
+      game.gamePk && 
+      game.teams?.home?.team?.id && 
+      game.teams?.away?.team?.id &&
+      !game.status.detailedState.toLowerCase().includes('cancelled')
+    )
+  );
+  
+  console.log(`Filtered to ${validGames.length} valid games`);
+  return validGames;
 }
 
 async function upsertTeam(supabase: any, team: MLBTeam) {

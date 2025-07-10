@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PlayerStatsBackfillCard } from '@/components/PlayerStatsBackfillCard';
 import LineupMonitorCard from '@/components/LineupMonitorCard';
+import LineupOrchestratorCard from '@/components/LineupOrchestratorCard';
 import DataQualityDashboard from '@/components/DataQualityDashboard';
 import AutoLineupScheduler from '@/components/AutoLineupScheduler';
 
@@ -363,7 +364,8 @@ const Admin = () => {
           {/* Player Statistics */}
           <PlayerStatsBackfillCard />
 
-          {/* Lineup Monitor & Scheduler */}
+          {/* Lineup System */}
+          <LineupOrchestratorCard />
           <LineupMonitorCard />
           <AutoLineupScheduler />
 

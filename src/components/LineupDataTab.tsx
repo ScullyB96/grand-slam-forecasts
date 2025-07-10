@@ -34,10 +34,11 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
     return (
       <div className="text-center text-muted-foreground p-8">
         <Users className="h-16 w-16 mx-auto mb-4 opacity-50" />
-        <h3 className="text-lg font-semibold mb-2">Lineups Not Available</h3>
-        <p>Official lineups have not been released yet for this game.</p>
+        <h3 className="text-lg font-semibold mb-2">Official Lineups Not Yet Released</h3>
+        <p>Official lineups have not been released by MLB for this game.</p>
         <p className="text-sm mt-2">Lineups are typically announced 1-2 hours before game time.</p>
-        <p className="text-sm mt-1 text-yellow-600">Check back closer to game time for official lineups.</p>
+        <p className="text-sm mt-1 font-medium text-amber-600">⚠️ No mock lineups - only official MLB data is shown</p>
+        <p className="text-xs mt-2 text-muted-foreground">Check back closer to game time for official lineups.</p>
       </div>
     );
   }
