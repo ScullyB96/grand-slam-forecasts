@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useGames, useFetchSchedule } from '@/hooks/useGames';
+import { useGames } from '@/hooks/useGames';
 import { useScheduleDebug, useVerifyIngestion } from '@/hooks/useScheduleDebug';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -37,9 +37,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   selectedGameId
 }) => {
   const { data: games, isLoading, error, refetch } = useGames(selectedDate);
-  const { mutate: triggerFetch, isPending: isFetching } = useFetchSchedule();
   const { data: debugData, refetch: refetchDebug } = useScheduleDebug();
   const { data: verificationData } = useVerifyIngestion(selectedDate);
+  const [isFetching, setIsFetching] = useState(false);
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
 
@@ -51,6 +51,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
                               );
 
   const handleFetchSchedule = async () => {
+    setIsFetching(true);
     try {
       console.log('Triggering schedule fetch...');
       
@@ -91,6 +92,8 @@ const GameSelector: React.FC<GameSelectorProps> = ({
         description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive"
       });
+    } finally {
+      setIsFetching(false);
     }
   };
 
