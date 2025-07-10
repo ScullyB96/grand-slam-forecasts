@@ -157,9 +157,15 @@ export function extractLineupsFromGameFeed(gameData: any, teamIdMap?: Map<number
 
     // Map MLB team ID to our database team ID
     const mlbTeamId = teamInfo.id;
-    const dbTeamId = teamIdMap?.get(mlbTeamId) || mlbTeamId;
+    const dbTeamId = teamIdMap?.get(mlbTeamId);
     
-    console.log(`Mapping team ${teamInfo.name} from MLB ID ${mlbTeamId} to DB ID ${dbTeamId}`);
+    if (!dbTeamId) {
+      console.error(`❌ No mapping found for MLB team ID ${mlbTeamId} (${teamInfo.name})`);
+      console.log('Available mappings:', Array.from(teamIdMap?.entries() || []));
+      return; // Skip this team if no mapping found
+    }
+    
+    console.log(`✅ Mapping team ${teamInfo.name} from MLB ID ${mlbTeamId} to DB ID ${dbTeamId}`);
 
     // Extract batting lineup
     teamData.batters.forEach((playerId: number, index: number) => {
@@ -208,10 +214,11 @@ export function createTeamIdMapping(teams: any[]): Map<number, number> {
   teams.forEach(team => {
     if (team.team_id && team.id) {
       mapping.set(team.team_id, team.id);
+      console.log(`Mapping: MLB team ${team.team_id} (${team.abbreviation}) -> DB team ${team.id}`);
     }
   });
   
-  console.log('Created team ID mapping:', Array.from(mapping.entries()));
+  console.log(`Created team ID mapping with ${mapping.size} entries`);
   return mapping;
 }
 

@@ -69,7 +69,9 @@ serve(async (req) => {
       throw new Error('Failed to fetch teams: ' + teamsError.message);
     }
 
+    console.log('Available teams:', teams?.map(t => `${t.name} (MLB: ${t.team_id}, DB: ${t.id})`));
     const teamIdMapping = createTeamIdMapping(teams || []);
+    console.log('Team mapping created:', Array.from(teamIdMapping.entries()));
 
     let gamesChecked = 0;
     let gamesUpdated = 0;

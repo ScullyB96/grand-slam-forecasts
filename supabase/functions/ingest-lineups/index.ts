@@ -131,7 +131,24 @@ serve(async (req) => {
       throw new Error('Failed to fetch teams: ' + teamsError.message);
     }
 
+    console.log('Available teams:', teams?.map(t => `${t.name} (MLB: ${t.team_id}, DB: ${t.id})`));
     const teamIdMapping = createTeamIdMapping(teams || []);
+    console.log('Team mapping created:', Array.from(teamIdMapping.entries()));
+
+    // Clear existing lineups for today's games first to prevent duplicates
+    console.log('Clearing existing lineups to prevent duplicates...');
+    for (const game of games) {
+      const { error: deleteError } = await supabase
+        .from('game_lineups')
+        .delete()
+        .eq('game_id', game.game_id);
+      
+      if (deleteError) {
+        console.error(`Error clearing lineups for game ${game.game_id}:`, deleteError);
+      } else {
+        console.log(`✅ Cleared existing lineups for game ${game.game_id}`);
+      }
+    }
 
     // Try to get official lineups from MLB Stats API first
     console.log('Attempting to fetch official lineups from MLB Stats API...');
@@ -198,26 +215,37 @@ serve(async (req) => {
     const errorDetails: string[] = [];
 
     if (lineups.length > 0) {
-      // Clear existing lineups for today's games
-      for (const game of games) {
-        await supabase
-          .from('game_lineups')
-          .delete()
-          .eq('game_id', game.game_id);
+      // Validate team IDs before inserting
+      console.log('Validating lineup team IDs...');
+      const validLineups = [];
+      const availableTeamIds = teams?.map(t => t.id) || [];
+      
+      for (const lineup of lineups) {
+        if (availableTeamIds.includes(lineup.team_id)) {
+          validLineups.push(lineup);
+        } else {
+          console.error(`❌ Invalid team ID ${lineup.team_id} for player ${lineup.player_name} in game ${lineup.game_id}`);
+          errors++;
+          errorDetails.push(`Invalid team ID ${lineup.team_id} for player ${lineup.player_name}`);
+        }
       }
+      
+      console.log(`Valid lineups: ${validLineups.length}, Invalid: ${lineups.length - validLineups.length}`);
+      
+      if (validLineups.length > 0) {
+        // Insert valid lineups
+        const { error: lineupError } = await supabase
+          .from('game_lineups')
+          .insert(validLineups);
 
-      // Insert new lineups
-      const { error: lineupError } = await supabase
-        .from('game_lineups')
-        .insert(lineups);
-
-      if (lineupError) {
-        console.error('Error inserting lineups:', lineupError);
-        errors++;
-        errorDetails.push(`Failed to insert lineups: ${lineupError.message}`);
-      } else {
-        processed = lineups.length;
-        console.log(`✅ Successfully inserted ${processed} lineup entries`);
+        if (lineupError) {
+          console.error('Error inserting lineups:', lineupError);
+          errors++;
+          errorDetails.push(`Failed to insert lineups: ${lineupError.message}`);
+        } else {
+          processed = validLineups.length;
+          console.log(`✅ Successfully inserted ${processed} lineup entries`);
+        }
       }
     }
 
