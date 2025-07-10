@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useGameLineups, GameLineup } from '@/hooks/useGameLineups';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +14,8 @@ interface LineupDataTabProps {
 
 const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTeam }) => {
   const { data: lineups, isLoading, error } = useGameLineups(gameId);
+
+  console.log('LineupDataTab - gameId:', gameId, 'lineups:', lineups);
 
   if (isLoading) {
     return (
@@ -45,9 +48,9 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
 
   // Check if lineups are official or not available
   const hasOfficialLineups = lineups.some(lineup => 
+    lineup.player_name && 
     !lineup.player_name.includes('Player (') && 
     !lineup.player_name.includes('Mock') &&
-    !lineup.player_name.includes('Starting Pitcher (') &&
     lineup.player_id < 600000 // Real MLB player IDs are typically under this threshold
   );
 
@@ -80,7 +83,17 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
   }, {} as { home?: { batting: GameLineup[], pitching: GameLineup[] }, away?: { batting: GameLineup[], pitching: GameLineup[] } });
 
   const renderBattingLineup = (lineups: GameLineup[], teamName: string) => {
-    const sortedLineups = lineups.sort((a, b) => (a.batting_order || 0) - (b.batting_order || 0));
+    const sortedLineups = lineups
+      .filter(lineup => lineup.batting_order && lineup.batting_order <= 9)
+      .sort((a, b) => (a.batting_order || 0) - (b.batting_order || 0));
+    
+    if (sortedLineups.length === 0) {
+      return (
+        <div className="text-center text-muted-foreground p-4">
+          <p>Batting lineup not yet available</p>
+        </div>
+      );
+    }
     
     return (
       <div className="space-y-2">
@@ -89,7 +102,7 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
           <h4 className="font-semibold">{teamName} Batting Order</h4>
         </div>
         <div className="space-y-1">
-          {sortedLineups.map((player, index) => (
+          {sortedLineups.map((player) => (
             <div key={player.id} className="flex items-center justify-between p-2 bg-muted/50 rounded">
               <div className="flex items-center gap-3">
                 <Badge variant="secondary" className="w-6 h-6 rounded-full p-0 flex items-center justify-center text-xs">
@@ -109,13 +122,27 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
   };
 
   const renderPitchingLineup = (lineups: GameLineup[], teamName: string) => {
+    const pitchers = lineups.filter(lineup => 
+      lineup.position_code === 'P' || 
+      lineup.position_code === 'SP' || 
+      lineup.lineup_type === 'pitching'
+    );
+
+    if (pitchers.length === 0) {
+      return (
+        <div className="text-center text-muted-foreground p-4">
+          <p>Starting pitcher not yet announced</p>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2 mb-3">
           <Zap className="h-4 w-4" />
           <h4 className="font-semibold">{teamName} Starting Pitcher</h4>
         </div>
-        {lineups.map((player) => (
+        {pitchers.map((player) => (
           <div key={player.id} className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded">
             <span className="font-medium">{player.player_name}</span>
             <div className="flex items-center gap-2">
@@ -142,15 +169,11 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {groupedLineups.away.batting.length > 0 && 
-              renderBattingLineup(groupedLineups.away.batting, awayTeam?.name || 'Away')
-            }
+            {renderBattingLineup(groupedLineups.away.batting, awayTeam?.name || 'Away')}
             {groupedLineups.away.batting.length > 0 && groupedLineups.away.pitching.length > 0 && 
               <Separator />
             }
-            {groupedLineups.away.pitching.length > 0 && 
-              renderPitchingLineup(groupedLineups.away.pitching, awayTeam?.name || 'Away')
-            }
+            {renderPitchingLineup(groupedLineups.away.pitching, awayTeam?.name || 'Away')}
           </CardContent>
         </Card>
       )}
@@ -165,15 +188,11 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
-            {groupedLineups.home.batting.length > 0 && 
-              renderBattingLineup(groupedLineups.home.batting, homeTeam?.name || 'Home')
-            }
+            {renderBattingLineup(groupedLineups.home.batting, homeTeam?.name || 'Home')}
             {groupedLineups.home.batting.length > 0 && groupedLineups.home.pitching.length > 0 && 
               <Separator />
             }
-            {groupedLineups.home.pitching.length > 0 && 
-              renderPitchingLineup(groupedLineups.home.pitching, homeTeam?.name || 'Home')
-            }
+            {renderPitchingLineup(groupedLineups.home.pitching, homeTeam?.name || 'Home')}
           </CardContent>
         </Card>
       )}
