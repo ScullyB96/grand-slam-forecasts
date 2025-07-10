@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Info, Target, Clock } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { TrendingUp, TrendingDown, Info, Target, Clock, Calculator, BarChart3, Trophy, Percent } from 'lucide-react';
 import ExplanationModal from './ExplanationModal';
 
 interface GamePrediction {
@@ -55,7 +57,20 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
   };
 
   const formatProbability = (prob: number) => {
-    return `${Math.round(prob * 100)}%`;
+    return `${(prob * 100).toFixed(2)}%`;
+  };
+
+  const formatDecimal = (num: number) => {
+    return num.toFixed(2);
+  };
+
+  const getWinProbabilityGradient = (prob: number) => {
+    const percentage = Math.round(prob * 100);
+    if (percentage >= 60) return 'from-green-500 to-green-600';
+    if (percentage >= 55) return 'from-emerald-500 to-emerald-600';
+    if (percentage >= 50) return 'from-blue-500 to-blue-600';
+    if (percentage >= 45) return 'from-orange-500 to-orange-600';
+    return 'from-red-500 to-red-600';
   };
 
   const formatGameTime = (timeString?: string) => {
@@ -84,6 +99,13 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
     : awayTeam;
 
   const favoredProb = Math.max(prediction.home_win_probability, prediction.away_win_probability);
+  
+  // Extract calculation factors
+  const keyFactors = prediction.key_factors || {};
+  const homeWinPct = keyFactors.home_win_pct || 0;
+  const awayWinPct = keyFactors.away_win_pct || 0;
+  const homeRunsPerGame = keyFactors.home_runs_per_game || 0;
+  const awayRunsPerGame = keyFactors.away_runs_per_game || 0;
 
   return (
     <>
@@ -114,98 +136,256 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
           )}
         </CardHeader>
 
-        <CardContent className="space-y-4">
-          {/* Win Probabilities */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{awayTeam.name}</span>
-                {prediction.away_win_probability > prediction.home_win_probability && (
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                )}
-              </div>
-              <div className="text-lg font-semibold">
-                {formatProbability(prediction.away_win_probability)}
-              </div>
+        <CardContent className="space-y-6">
+          {/* Win Probabilities with Visual Progress */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Trophy className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">Win Probabilities</h3>
             </div>
-
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="font-medium">{homeTeam.name}</span>
-                {prediction.home_win_probability > prediction.away_win_probability && (
-                  <TrendingUp className="h-4 w-4 text-green-600" />
-                )}
+            
+            <div className="space-y-4">
+              {/* Away Team */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{awayTeam.name}</span>
+                    {prediction.away_win_probability > prediction.home_win_probability && (
+                      <Badge variant="default" className="text-xs">FAVORED</Badge>
+                    )}
+                  </div>
+                  <div className="text-xl font-bold">
+                    {formatProbability(prediction.away_win_probability)}
+                  </div>
+                </div>
+                <Progress 
+                  value={prediction.away_win_probability * 100} 
+                  className="h-3"
+                />
               </div>
-              <div className="text-lg font-semibold">
-                {formatProbability(prediction.home_win_probability)}
-              </div>
-            </div>
 
-            <div className="text-sm text-muted-foreground text-center">
-              Favored: {favoredTeam.name} ({formatProbability(favoredProb)})
+              {/* Home Team */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{homeTeam.name}</span>
+                    {prediction.home_win_probability > prediction.away_win_probability && (
+                      <Badge variant="default" className="text-xs">FAVORED</Badge>
+                    )}
+                  </div>
+                  <div className="text-xl font-bold">
+                    {formatProbability(prediction.home_win_probability)}
+                  </div>
+                </div>
+                <Progress 
+                  value={prediction.home_win_probability * 100} 
+                  className="h-3"
+                />
+              </div>
             </div>
           </div>
 
+          <Separator />
+
+          {/* Calculation Breakdown */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">Calculation Breakdown</h3>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="p-3 border-l-4 border-l-blue-500">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-blue-700">{awayTeam.abbreviation} Stats</div>
+                  {awayWinPct > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Win %:</span>
+                      <span className="font-mono">{formatDecimal(awayWinPct * 100)}%</span>
+                    </div>
+                  )}
+                  {awayRunsPerGame > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Runs/Game:</span>
+                      <span className="font-mono">{formatDecimal(awayRunsPerGame)}</span>
+                    </div>
+                  )}
+                  {keyFactors.away_team_record && (
+                    <div className="flex justify-between text-sm">
+                      <span>Record:</span>
+                      <span className="font-mono">{keyFactors.away_team_record}</span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-3 border-l-4 border-l-green-500">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium text-green-700">{homeTeam.abbreviation} Stats</div>
+                  {homeWinPct > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Win %:</span>
+                      <span className="font-mono">{formatDecimal(homeWinPct * 100)}%</span>
+                    </div>
+                  )}
+                  {homeRunsPerGame > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span>Runs/Game:</span>
+                      <span className="font-mono">{formatDecimal(homeRunsPerGame)}</span>
+                    </div>
+                  )}
+                  {keyFactors.home_team_record && (
+                    <div className="flex justify-between text-sm">
+                      <span>Record:</span>
+                      <span className="font-mono">{keyFactors.home_team_record}</span>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* Algorithm Components */}
+            <Card className="p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200">
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-purple-700">Algorithm Components</div>
+                <div className="grid grid-cols-3 gap-3 text-xs">
+                  <div className="text-center">
+                    <div className="font-medium">Team Strength</div>
+                    <div className="text-purple-600">60% weight</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium">Home Advantage</div>
+                    <div className="text-purple-600">40% weight</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium">Confidence</div>
+                    <div className="text-purple-600">{formatDecimal((prediction.confidence_score || 0) * 100)}%</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <Separator />
+
           {/* Predicted Scores */}
           {prediction.predicted_home_score !== undefined && prediction.predicted_away_score !== undefined && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <div className="text-sm font-medium mb-2 flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                Predicted Final Score
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold">Score Prediction</h3>
               </div>
-              <div className="text-center">
-                <span className="text-xl font-bold">
-                  {awayTeam.abbreviation} {prediction.predicted_away_score} - {prediction.predicted_home_score} {homeTeam.abbreviation}
-                </span>
+              
+              <Card className="p-4 bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-200">
+                <div className="text-center space-y-2">
+                  <div className="text-2xl font-bold text-indigo-700">
+                    {awayTeam.abbreviation} {prediction.predicted_away_score} - {prediction.predicted_home_score} {homeTeam.abbreviation}
+                  </div>
+                  <div className="text-sm text-indigo-600">
+                    Based on team offensive averages + variance
+                  </div>
+                </div>
+              </Card>
+
+              {/* Score Calculation Details */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="text-sm space-y-1 p-2 bg-muted/30 rounded">
+                  <div className="font-medium">{awayTeam.abbreviation} Score Calc:</div>
+                  <div className="text-xs text-muted-foreground">
+                    Base: {formatDecimal(awayRunsPerGame)} runs/game
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    + Random variance: ±1 run
+                  </div>
+                </div>
+                <div className="text-sm space-y-1 p-2 bg-muted/30 rounded">
+                  <div className="font-medium">{homeTeam.abbreviation} Score Calc:</div>
+                  <div className="text-xs text-muted-foreground">
+                    Base: {formatDecimal(homeRunsPerGame)} runs/game
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    + Home field boost: +3% advantage
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
           {/* Over/Under */}
           {prediction.over_under_line && (
-            <div className="bg-muted/50 p-3 rounded-lg">
-              <div className="text-sm font-medium mb-2">Over/Under</div>
-              <div className="flex justify-between items-center">
-                <div className="text-center">
-                  <div className="text-lg font-semibold">{prediction.over_under_line}</div>
-                  <div className="text-xs text-muted-foreground">Total Runs</div>
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Over/Under Analysis</h3>
                 </div>
-                <div className="text-right">
-                  <div className="text-sm">
-                    Over: {formatProbability(prediction.over_probability || 0.5)}
+                
+                <Card className="p-3 bg-gradient-to-r from-orange-50 to-red-50 border border-orange-200">
+                  <div className="space-y-3">
+                    <div className="text-center">
+                      <div className="text-lg font-bold text-orange-700">
+                        Total: {prediction.over_under_line} runs
+                      </div>
+                      <div className="text-sm text-orange-600">
+                        Projected: {(prediction.predicted_home_score || 0) + (prediction.predicted_away_score || 0)} runs
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="text-center p-2 bg-white/60 rounded">
+                        <div className="text-sm font-medium">Over</div>
+                        <div className="text-lg font-bold text-green-600">
+                          {formatProbability(prediction.over_probability || 0.5)}
+                        </div>
+                      </div>
+                      <div className="text-center p-2 bg-white/60 rounded">
+                        <div className="text-sm font-medium">Under</div>
+                        <div className="text-lg font-bold text-red-600">
+                          {formatProbability(prediction.under_probability || 0.5)}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-sm">
-                    Under: {formatProbability(prediction.under_probability || 0.5)}
-                  </div>
-                </div>
+                </Card>
               </div>
-            </div>
+            </>
           )}
 
-          {/* Key Factors Preview */}
-          {prediction.key_factors && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Key Factors</div>
-              <div className="flex flex-wrap gap-1">
-                {prediction.key_factors.home_advantage && (
-                  <Badge variant="outline" className="text-xs">Home Field</Badge>
-                )}
-                {prediction.key_factors.pitching_matchup && (
-                  <Badge variant="outline" className="text-xs">
-                    Pitching Edge: {prediction.key_factors.pitching_matchup}
-                  </Badge>
-                )}
-                {prediction.key_factors.park_factors && (
-                  <Badge variant="outline" className="text-xs">
-                    {prediction.key_factors.park_factors} Park
-                  </Badge>
-                )}
+          <Separator />
+
+          {/* Confidence & Methodology */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Percent className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold">Model Confidence</h3>
+            </div>
+            
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg">
+              <div>
+                <div className="font-medium text-green-700">
+                  {getConfidenceText(prediction.confidence_score)}
+                </div>
+                <div className="text-sm text-green-600">
+                  Based on data quality & team differential
+                </div>
+              </div>
+              <div className="text-2xl font-bold text-green-700">
+                {formatDecimal((prediction.confidence_score || 0) * 100)}%
               </div>
             </div>
-          )}
+          </div>
 
-          <div className="text-xs text-muted-foreground">
-            Updated: {formatPredictionDate(prediction.prediction_date)} EST
+          <div className="text-xs text-muted-foreground flex items-center justify-between pt-2 border-t">
+            <span>Updated: {formatPredictionDate(prediction.prediction_date)} EST</span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowExplanation(true)}
+              className="text-xs h-6"
+            >
+              View Details
+            </Button>
           </div>
         </CardContent>
       </Card>

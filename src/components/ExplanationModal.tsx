@@ -55,7 +55,11 @@ const ExplanationModal: React.FC<ExplanationModalProps> = ({
   awayTeam
 }) => {
   const formatProbability = (prob: number) => {
-    return Math.round(prob * 100);
+    return (prob * 100).toFixed(2);
+  };
+
+  const formatDecimal = (num: number) => {
+    return num.toFixed(2);
   };
 
   const getFactorIcon = (factor: string) => {
@@ -112,7 +116,7 @@ const ExplanationModal: React.FC<ExplanationModalProps> = ({
                     </span>
                   </div>
                   <Progress 
-                    value={formatProbability(prediction.home_win_probability)} 
+                    value={prediction.home_win_probability * 100} 
                     className="h-2"
                   />
                 </div>
@@ -125,7 +129,7 @@ const ExplanationModal: React.FC<ExplanationModalProps> = ({
                     </span>
                   </div>
                   <Progress 
-                    value={formatProbability(prediction.away_win_probability)} 
+                    value={prediction.away_win_probability * 100} 
                     className="h-2"
                   />
                 </div>
@@ -195,7 +199,7 @@ const ExplanationModal: React.FC<ExplanationModalProps> = ({
                 </div>
 
                 <Progress 
-                  value={formatProbability(prediction.over_probability || 0.5)} 
+                  value={(prediction.over_probability || 0.5) * 100} 
                   className="h-2"
                 />
                 <div className="text-xs text-muted-foreground text-center">
