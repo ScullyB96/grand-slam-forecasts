@@ -41,11 +41,26 @@ interface WeatherData {
 }
 
 serve(async (req) => {
-  console.log('=== GENERATE PREDICTIONS FUNCTION CALLED ===');
+  console.log('=== GENERATE PREDICTIONS FUNCTION STARTED ===');
   console.log('Request method:', req.method);
   console.log('Request URL:', req.url);
   
+  // Add immediate response for debugging
+  try {
+    console.log('Function is running...');
+  } catch (initError) {
+    console.error('Function initialization error:', initError);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: 'Function initialization failed: ' + initError.message 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+  
   if (req.method === 'OPTIONS') {
+    console.log('OPTIONS request, returning CORS headers');
     return new Response(null, { headers: corsHeaders });
   }
 
