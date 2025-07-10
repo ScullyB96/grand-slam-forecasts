@@ -163,7 +163,7 @@ async function upsertTeam(supabase: any, team: MLBTeam) {
     // Handle different team name structures from MLB API
     const teamName = team.teamName || team.clubName || team.name;
     const abbreviation = team.abbreviation || teamName?.substring(0, 3).toUpperCase() || 'UNK';
-    const league = team.league?.abbreviation || 'MLB';
+    const league = team.league?.abbreviation || team.league?.name || 'MLB'; // Handle null league
     
     // Handle division names more carefully
     let division = 'Unknown';

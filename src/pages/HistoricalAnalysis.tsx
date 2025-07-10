@@ -12,6 +12,7 @@ import { AlertCircle, Calendar, Database, TrendingUp, Target, BarChart3 } from '
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import SimpleModelTest from '@/components/SimpleModelTest';
 
 interface BackfillResult {
   success: boolean;
@@ -144,11 +145,16 @@ const HistoricalAnalysis: React.FC = () => {
         <h1 className="text-3xl font-bold">Historical Analysis & Backfill</h1>
       </div>
 
-      <Tabs defaultValue="backfill" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+      <Tabs defaultValue="simple-test" className="w-full">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="simple-test">Quick Test</TabsTrigger>
           <TabsTrigger value="backfill">Data Backfill</TabsTrigger>
           <TabsTrigger value="analysis">Prediction Analysis</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="simple-test">
+          <SimpleModelTest />
+        </TabsContent>
 
         <TabsContent value="backfill" className="space-y-6">
           <Card>

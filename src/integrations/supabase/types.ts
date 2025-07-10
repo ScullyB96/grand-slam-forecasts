@@ -1156,7 +1156,7 @@ export type Database = {
           created_at: string | null
           division: string
           id: number
-          league: string
+          league: string | null
           name: string
           team_id: number | null
           updated_at: string | null
@@ -1168,7 +1168,7 @@ export type Database = {
           created_at?: string | null
           division: string
           id?: number
-          league: string
+          league?: string | null
           name: string
           team_id?: number | null
           updated_at?: string | null
@@ -1180,7 +1180,7 @@ export type Database = {
           created_at?: string | null
           division?: string
           id?: number
-          league?: string
+          league?: string | null
           name?: string
           team_id?: number | null
           updated_at?: string | null
