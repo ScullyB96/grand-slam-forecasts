@@ -46,8 +46,8 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   const { toast } = useToast();
 
   // Check if last run was successful and games were processed
-  const isLastRunSuccessful = debugData?.lastJob?.status === 'completed' && 
-                              (debugData?.lastJob?.records_inserted || 0) > 0;
+  const isLastRunSuccessful = debugData?.lastJob?.status === 'completed' || 
+                              (games && games.length > 0);
 
   const handleFetchSchedule = async () => {
     setIsFetching(true);

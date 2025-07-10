@@ -326,6 +326,8 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
       console.log(`Upserting game ${game.gamePk}`, gameData);
 
+      console.log(`Attempting to upsert game ${game.gamePk}:`, gameData);
+      
       const { error } = await supabase
         .from('games')
         .upsert(gameData, { 

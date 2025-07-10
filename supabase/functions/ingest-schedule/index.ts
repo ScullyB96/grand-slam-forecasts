@@ -171,10 +171,15 @@ async function processGames(supabase: any, games: MLBGame[]) {
 async function logIngestionJob(supabase: any, jobData: any) {
   const { error } = await supabase
     .from('data_ingestion_jobs')
-    .insert(jobData);
+    .upsert(jobData, { 
+      onConflict: 'id',
+      ignoreDuplicates: false 
+    });
 
   if (error) {
     console.error('Error logging ingestion job:', error);
+  } else {
+    console.log('Successfully logged ingestion job:', jobData.id);
   }
 }
 
@@ -199,16 +204,28 @@ Deno.serve(async (req) => {
     console.log(`Starting MLB schedule ingestion for ${targetDate}`);
 
     // Log job start
-    const jobId = crypto.randomUUID();
-    await logIngestionJob(supabase, {
-      id: jobId,
+    const jobStartData = {
       job_name: 'MLB Schedule Ingestion',
       job_type: 'schedule_ingestion',
       data_source: 'MLB Stats API',
       status: 'running',
       started_at: startTime.toISOString(),
       season: new Date(targetDate).getFullYear()
-    });
+    };
+
+    const { data: jobRecord, error: jobError } = await supabase
+      .from('data_ingestion_jobs')
+      .insert(jobStartData)
+      .select('id')
+      .single();
+
+    if (jobError) {
+      console.error('Error creating job record:', jobError);
+      throw jobError;
+    }
+
+    const jobId = jobRecord.id;
+    console.log(`Created job record with ID: ${jobId}`);
 
     // Fetch games from MLB API
     const games = await fetchMLBSchedule(targetDate);
@@ -221,20 +238,23 @@ Deno.serve(async (req) => {
     const success = errors.length === 0;
 
     // Log job completion
-    await logIngestionJob(supabase, {
-      id: jobId,
-      job_name: 'MLB Schedule Ingestion',
-      job_type: 'schedule_ingestion',
-      data_source: 'MLB Stats API',
-      status: success ? 'completed' : 'completed_with_errors',
-      started_at: startTime.toISOString(),
-      completed_at: completedAt.toISOString(),
-      records_processed: games.length,
-      records_inserted: processedCount,
-      errors_count: errors.length,
-      error_details: errors.length > 0 ? { errors } : null,
-      season: new Date(targetDate).getFullYear()
-    });
+    const { error: updateError } = await supabase
+      .from('data_ingestion_jobs')
+      .update({
+        status: success ? 'completed' : 'completed_with_errors',
+        completed_at: completedAt.toISOString(),
+        records_processed: games.length,
+        records_inserted: processedCount,
+        errors_count: errors.length,
+        error_details: errors.length > 0 ? { errors } : null
+      })
+      .eq('id', jobId);
+
+    if (updateError) {
+      console.error('Error updating job record:', updateError);
+    } else {
+      console.log(`Successfully updated job record ${jobId} with completion status`);
+    }
 
     const response = {
       success: true,
@@ -256,8 +276,8 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Ingestion failed:', error);
 
-    // Log job failure
-    await logIngestionJob(supabase, {
+    // Log job failure if we have a jobId
+    const jobStartData = {
       job_name: 'MLB Schedule Ingestion',
       job_type: 'schedule_ingestion',
       data_source: 'MLB Stats API',
@@ -266,7 +286,11 @@ Deno.serve(async (req) => {
       completed_at: new Date().toISOString(),
       errors_count: 1,
       error_details: { error: error.message }
-    });
+    };
+
+    await supabase
+      .from('data_ingestion_jobs')
+      .insert(jobStartData);
 
     return new Response(JSON.stringify({
       success: false,

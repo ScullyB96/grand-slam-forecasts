@@ -163,7 +163,11 @@ async function logJobStart(supabase: any, jobName: string, gameIds?: number[]) {
     .select('id')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error creating prediction job:', error);
+    throw error;
+  }
+  console.log('Created prediction job with ID:', data.id);
   return data.id;
 }
 
