@@ -153,6 +153,30 @@ const Admin = () => {
     }
   };
 
+  const handleIngestLineups = async () => {
+    try {
+      toast({
+        title: "Ingesting Lineups",
+        description: "Fetching lineups from MLB API and backup sources..."
+      });
+
+      const { data, error } = await supabase.functions.invoke('ingest-lineups');
+      if (error) throw error;
+
+      toast({
+        title: "Lineups Ingested Successfully",
+        description: `Processed ${data?.processed || 0} lineup entries with ${data?.official_lineups || 0} official lineups`
+      });
+    } catch (error) {
+      console.error('Error ingesting lineups:', error);
+      toast({
+        title: "Lineup Ingestion Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleShowDebugLogs = () => {
     if (debugData?.lastJob) {
       console.log('=== SCHEDULE DEBUG INFO ===');
@@ -313,6 +337,15 @@ const Admin = () => {
                 >
                   <Database className="h-4 w-4 mr-2" />
                   Ingest Weather Data
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  onClick={handleIngestLineups}
+                  className="justify-start"
+                >
+                  <Database className="h-4 w-4 mr-2" />
+                  Ingest Lineups
                 </Button>
               </div>
             </CardContent>
