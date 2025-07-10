@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useGames } from '@/hooks/useGames';
 import { useScheduleDebug, useVerifyIngestion } from '@/hooks/useScheduleDebug';
@@ -43,12 +44,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
 
-  // Check if last run was successful based on debug logs
-  const isLastRunSuccessful = debugData?.summary?.errorCount === 0 && 
-                              debugData?.logs?.some(log => 
-                                log.message.includes('Ingestion completed') && 
-                                log.level === 'info'
-                              );
+  // Check if last run was successful and games were processed
+  const isLastRunSuccessful = debugData?.lastJob?.status === 'completed' && 
+                              (debugData?.lastJob?.records_inserted || 0) > 0;
 
   const handleFetchSchedule = async () => {
     setIsFetching(true);
@@ -61,6 +59,15 @@ const GameSelector: React.FC<GameSelectorProps> = ({
       
       if (error) {
         console.error('Supabase function invoke error:', error);
+        
+        // Get debug information on error
+        try {
+          const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
+          console.log('Debug response after error:', debugResponse);
+        } catch (debugError) {
+          console.error('Failed to fetch debug info:', debugError);
+        }
+        
         throw new Error(`Function invocation failed: ${error.message}`);
       }
 
@@ -87,6 +94,15 @@ const GameSelector: React.FC<GameSelectorProps> = ({
       }
     } catch (error) {
       console.error('Error fetching schedule:', error);
+      
+      // Try to get debug information
+      try {
+        const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
+        console.log('Debug response after error:', debugResponse);
+      } catch (debugError) {
+        console.error('Failed to fetch debug info:', debugError);
+      }
+      
       toast({
         title: "Schedule Fetch Failed",
         description: error instanceof Error ? error.message : "Unknown error occurred",
@@ -140,16 +156,20 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   };
 
   const handleShowDebugLogs = () => {
-    if (debugData?.logs) {
-      console.log('=== SCHEDULE DEBUG LOGS ===');
-      debugData.logs.forEach(log => {
-        console.log(`[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`, log.data || '');
-      });
-      console.log('=== END DEBUG LOGS ===');
+    if (debugData?.lastJob) {
+      console.log('=== SCHEDULE DEBUG INFO ===');
+      console.log('Last Job Details:', debugData.lastJob);
+      console.log('Summary:', debugData.summary);
+      console.log('=== END DEBUG INFO ===');
       
       toast({
-        title: "Debug Logs",
-        description: `${debugData.logs.length} logs printed to console. Check developer tools.`
+        title: "Debug Information",
+        description: `Last job: ${debugData.lastJob.status}. Check console for details.`
+      });
+    } else {
+      toast({
+        title: "No Debug Data",
+        description: "No recent ingestion jobs found."
       });
     }
   };
@@ -298,7 +318,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               ) : (
                 <XCircle className="h-3 w-3" />
               )}
-              Last Run: {isLastRunSuccessful ? 'Success' : 'Failed'}
+              Last Run: {isLastRunSuccessful ? 'Success' : debugData.lastJob?.status || 'Failed'}
             </div>
           )}
           {verificationData && (

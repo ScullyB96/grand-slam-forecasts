@@ -2,20 +2,29 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-interface DebugLog {
-  timestamp: string;
-  level: 'info' | 'error' | 'debug';
-  message: string;
-  data?: any;
+interface JobDetails {
+  id: string;
+  job_name: string;
+  job_type: string;
+  data_source: string;
+  status: string;
+  started_at: string;
+  completed_at?: string;
+  records_processed?: number;
+  records_inserted?: number;
+  errors_count?: number;
+  error_details?: any;
+  season?: number;
+  created_at: string;
 }
 
 interface DebugResponse {
   success: boolean;
-  logs: DebugLog[];
+  lastJob: JobDetails | null;
   summary: {
-    totalLogs: number;
-    errorCount: number;
+    hasData: boolean;
     lastRun: string | null;
+    status: string;
   };
 }
 

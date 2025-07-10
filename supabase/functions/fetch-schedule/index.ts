@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
@@ -11,11 +12,11 @@ interface MLBTeam {
   abbreviation?: string;
   teamName?: string;
   clubName?: string;
-  league: {
+  league?: {
     name: string;
     abbreviation: string;
   };
-  division: {
+  division?: {
     name: string;
     nameShort: string;
   };
@@ -51,59 +52,30 @@ interface MLBScheduleResponse {
   }>;
 }
 
-interface DebugLog {
-  timestamp: string;
-  level: 'info' | 'error' | 'debug';
-  message: string;
-  data?: any;
-}
-
-let debugLogs: DebugLog[] = [];
-
-function addDebugLog(level: 'info' | 'error' | 'debug', message: string, data?: any) {
-  const log: DebugLog = {
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    data
-  };
-  debugLogs.push(log);
-  console.log(`[${level.toUpperCase()}] ${message}`, data || '');
-  
-  // Keep only last 100 logs to prevent memory issues
-  if (debugLogs.length > 100) {
-    debugLogs = debugLogs.slice(-100);
-  }
-}
-
 async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
   const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}`;
-  addDebugLog('info', `Fetching MLB schedule for ${date}`, { url });
+  console.log(`Fetching MLB schedule for ${date}`, { url });
   
   try {
     const response = await fetch(url);
-    addDebugLog('debug', `MLB API HTTP Status: ${response.status}`, { 
-      status: response.status, 
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers.entries())
-    });
+    console.log(`MLB API HTTP Status: ${response.status}`);
     
     if (!response.ok) {
       throw new Error(`MLB API error: ${response.status} ${response.statusText}`);
     }
     
     const data: MLBScheduleResponse = await response.json();
-    addDebugLog('debug', `MLB API Response Structure`, { 
-      datesCount: data.dates.length,
-      totalGames: data.dates.reduce((sum, date) => sum + date.games.length, 0)
+    console.log(`MLB API Response Structure`, { 
+      datesCount: data.dates?.length || 0,
+      totalGames: data.dates?.reduce((sum, date) => sum + (date.games?.length || 0), 0) || 0
     });
     
-    const games = data.dates.flatMap(dateEntry => dateEntry.games);
-    addDebugLog('info', `Successfully fetched ${games.length} games from MLB API`);
+    const games = data.dates?.flatMap(dateEntry => dateEntry.games || []) || [];
+    console.log(`Successfully fetched ${games.length} games from MLB API`);
     
     return games;
   } catch (error) {
-    addDebugLog('error', `Failed to fetch MLB schedule`, { 
+    console.error(`Failed to fetch MLB schedule`, { 
       error: error.message,
       url,
       date
@@ -114,17 +86,23 @@ async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
 
 async function upsertTeam(supabase: any, team: MLBTeam) {
   try {
+    // Handle different team name structures from MLB API
+    const teamName = team.teamName || team.clubName || team.name;
+    const abbreviation = team.abbreviation || teamName?.substring(0, 3).toUpperCase() || 'UNK';
+    const league = team.league?.abbreviation || 'MLB';
+    const division = team.division?.nameShort || 'Unknown';
+
     const teamData = {
       team_id: team.id,
-      name: team.teamName || team.clubName || team.name,
-      abbreviation: team.abbreviation || team.name.substring(0, 3).toUpperCase(),
-      league: team.league.abbreviation,
-      division: team.division.nameShort,
+      name: teamName,
+      abbreviation: abbreviation,
+      league: league,
+      division: division,
       city: team.teamName ? team.name : undefined,
       venue_name: team.venue?.name
     };
 
-    addDebugLog('debug', `Upserting team ${team.id}`, teamData);
+    console.log(`Upserting team ${team.id}`, teamData);
 
     const { error } = await supabase
       .from('teams')
@@ -134,7 +112,7 @@ async function upsertTeam(supabase: any, team: MLBTeam) {
       });
 
     if (error) {
-      addDebugLog('error', `Error upserting team ${team.id}`, error);
+      console.error(`Error upserting team ${team.id}`, error);
       throw error;
     }
 
@@ -146,14 +124,14 @@ async function upsertTeam(supabase: any, team: MLBTeam) {
       .single();
 
     if (selectError) {
-      addDebugLog('error', `Error fetching team ID for ${team.id}`, selectError);
+      console.error(`Error fetching team ID for ${team.id}`, selectError);
       throw selectError;
     }
 
-    addDebugLog('debug', `Successfully upserted team ${team.id} with internal ID ${teamRecord.id}`);
+    console.log(`Successfully upserted team ${team.id} with internal ID ${teamRecord.id}`);
     return teamRecord.id;
   } catch (error) {
-    addDebugLog('error', `Failed to upsert team ${team.id}`, { error: error.message });
+    console.error(`Failed to upsert team ${team.id}`, { error: error.message });
     throw error;
   }
 }
@@ -162,10 +140,18 @@ async function processGames(supabase: any, games: MLBGame[]) {
   let processedCount = 0;
   const errors: string[] = [];
 
-  addDebugLog('info', `Starting to process ${games.length} games`);
+  console.log(`Starting to process ${games.length} games`);
 
   for (const game of games) {
     try {
+      // Validate game structure
+      if (!game.teams?.home?.team || !game.teams?.away?.team) {
+        const error = `Game ${game.gamePk}: Invalid team structure`;
+        console.error(error);
+        errors.push(error);
+        continue;
+      }
+
       // First ensure both teams exist and get their internal IDs
       const homeTeamId = await upsertTeam(supabase, game.teams.home.team);
       const awayTeamId = await upsertTeam(supabase, game.teams.away.team);
@@ -177,7 +163,7 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
       // Map status
       let status = 'scheduled';
-      const mlbStatus = game.status.detailedState.toLowerCase();
+      const mlbStatus = game.status?.detailedState?.toLowerCase() || '';
       if (mlbStatus.includes('live') || mlbStatus.includes('progress')) {
         status = 'live';
       } else if (mlbStatus.includes('final') || mlbStatus.includes('completed')) {
@@ -200,7 +186,7 @@ async function processGames(supabase: any, games: MLBGame[]) {
         away_score: game.teams.away.score
       };
 
-      addDebugLog('debug', `Upserting game ${game.gamePk}`, gameData);
+      console.log(`Upserting game ${game.gamePk}`, gameData);
 
       const { error } = await supabase
         .from('games')
@@ -210,19 +196,19 @@ async function processGames(supabase: any, games: MLBGame[]) {
         });
 
       if (error) {
-        addDebugLog('error', `Error upserting game ${game.gamePk}`, error);
+        console.error(`Error upserting game ${game.gamePk}`, error);
         errors.push(`Game ${game.gamePk}: ${error.message}`);
       } else {
         processedCount++;
-        addDebugLog('debug', `Successfully processed game ${game.gamePk}`);
+        console.log(`Successfully processed game ${game.gamePk}`);
       }
     } catch (error) {
-      addDebugLog('error', `Error processing game ${game.gamePk}`, { error: error.message });
+      console.error(`Error processing game ${game.gamePk}`, { error: error.message });
       errors.push(`Game ${game.gamePk}: ${error.message}`);
     }
   }
 
-  addDebugLog('info', `Completed processing games`, { 
+  console.log(`Completed processing games`, { 
     total: games.length, 
     successful: processedCount, 
     errors: errors.length 
@@ -233,7 +219,7 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
 async function verifyIngestion(supabase: any, targetDate: string) {
   try {
-    addDebugLog('info', `Verifying ingestion for date: ${targetDate}`);
+    console.log(`Verifying ingestion for date: ${targetDate}`);
     
     const { data: games, error } = await supabase
       .from('games')
@@ -241,24 +227,16 @@ async function verifyIngestion(supabase: any, targetDate: string) {
       .eq('game_date', targetDate);
 
     if (error) {
-      addDebugLog('error', 'Failed to verify ingestion', error);
+      console.error('Failed to verify ingestion', error);
       throw error;
     }
 
     const gameCount = games?.length || 0;
-    addDebugLog('info', `Verification complete: Found ${gameCount} games for ${targetDate}`);
+    console.log(`Verification complete: Found ${gameCount} games for ${targetDate}`);
     
-    if (gameCount === 0) {
-      addDebugLog('error', `VERIFICATION FAILED: Zero games found for ${targetDate}`, { 
-        expectedDate: targetDate,
-        actualCount: gameCount
-      });
-      return { success: false, gameCount, error: 'No games found after ingestion' };
-    }
-
-    return { success: true, gameCount };
+    return { success: gameCount > 0, gameCount };
   } catch (error) {
-    addDebugLog('error', 'Verification process failed', { error: error.message });
+    console.error('Verification process failed', { error: error.message });
     return { success: false, gameCount: 0, error: error.message };
   }
 }
@@ -270,12 +248,12 @@ async function logIngestionJob(supabase: any, jobData: any) {
       .insert(jobData);
 
     if (error) {
-      addDebugLog('error', 'Error logging ingestion job', error);
+      console.error('Error logging ingestion job', error);
     } else {
-      addDebugLog('debug', 'Successfully logged ingestion job', { jobId: jobData.id });
+      console.log('Successfully logged ingestion job', { jobId: jobData.id });
     }
   } catch (error) {
-    addDebugLog('error', 'Failed to log ingestion job', { error: error.message });
+    console.error('Failed to log ingestion job', { error: error.message });
   }
 }
 
@@ -289,20 +267,46 @@ Deno.serve(async (req) => {
   
   // Debug endpoint
   if (url.pathname.includes('/debug-schedule')) {
-    addDebugLog('info', 'Debug endpoint accessed');
+    console.log('Debug endpoint accessed');
     
-    return new Response(JSON.stringify({
-      success: true,
-      logs: debugLogs,
-      summary: {
-        totalLogs: debugLogs.length,
-        errorCount: debugLogs.filter(log => log.level === 'error').length,
-        lastRun: debugLogs.length > 0 ? debugLogs[debugLogs.length - 1].timestamp : null
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+      const { data: lastJob, error } = await supabase
+        .from('data_ingestion_jobs')
+        .select('*')
+        .eq('job_name', 'MLB Schedule Ingestion')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        throw error;
       }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200
-    });
+
+      return new Response(JSON.stringify({
+        success: true,
+        lastJob: lastJob?.[0] || null,
+        summary: {
+          hasData: !!lastJob?.[0],
+          lastRun: lastJob?.[0]?.created_at || null,
+          status: lastJob?.[0]?.status || 'unknown'
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    } catch (error) {
+      console.error('Debug endpoint error:', error);
+      return new Response(JSON.stringify({
+        success: false,
+        error: error.message
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
+      });
+    }
   }
 
   // Main ingestion endpoint
@@ -317,7 +321,7 @@ Deno.serve(async (req) => {
     const dateParam = url.searchParams.get('date');
     const targetDate = dateParam || new Date().toISOString().split('T')[0];
 
-    addDebugLog('info', `Starting MLB schedule ingestion for ${targetDate}`);
+    console.log(`Starting MLB schedule ingestion for ${targetDate}`);
 
     // Log job start
     const jobId = crypto.randomUUID();
@@ -367,11 +371,10 @@ Deno.serve(async (req) => {
       verification: verification,
       errors: errors.length,
       errorDetails: errors.length > 0 ? errors : undefined,
-      duration: completedAt.getTime() - startTime.getTime(),
-      debugLogCount: debugLogs.length
+      duration: completedAt.getTime() - startTime.getTime()
     };
 
-    addDebugLog('info', 'Ingestion completed', response);
+    console.log('Ingestion completed', response);
 
     return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -379,10 +382,12 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    addDebugLog('error', 'Ingestion failed catastrophically', { error: error.message, stack: error.stack });
+    console.error('Ingestion failed catastrophically', { error: error.message, stack: error.stack });
 
     // Log job failure
+    const jobId = crypto.randomUUID();
     await logIngestionJob(supabase, {
+      id: jobId,
       job_name: 'MLB Schedule Ingestion',
       job_type: 'schedule_ingestion',
       data_source: 'MLB Stats API',
@@ -390,14 +395,14 @@ Deno.serve(async (req) => {
       started_at: startTime.toISOString(),
       completed_at: new Date().toISOString(),
       errors_count: 1,
-      error_details: { error: error.message, stack: error.stack }
+      error_details: { error: error.message, stack: error.stack },
+      season: new Date().getFullYear()
     });
 
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
-      timestamp: new Date().toISOString(),
-      debugLogCount: debugLogs.length
+      timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500
