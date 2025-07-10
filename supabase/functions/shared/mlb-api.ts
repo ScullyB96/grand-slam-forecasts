@@ -143,10 +143,10 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
   }
 
   const teams = boxscoreData.teams;
-  const gameInfo = gameData?.gameData || boxscoreData;
+  const gameId = parseInt(gameData?.gameData?.pk || boxscoreData.gamePk || boxscoreData.game?.gamePk);
   
   console.log('🔍 DEBUG - Starting lineup extraction');
-  console.log(`  - Game ID: ${gameInfo.pk || boxscoreData.gamePk}`);
+  console.log(`  - Game ID: ${gameId}`);
   console.log(`  - Teams available: ${Object.keys(teams)}`);
   
   // Process home and away teams
@@ -176,51 +176,31 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
     console.log(`  - Has pitchers: ${!!teamData.pitchers} (length: ${teamData.pitchers?.length || 0})`);
     console.log(`  - Has players: ${!!teamData.players} (keys: ${teamData.players ? Object.keys(teamData.players).length : 0})`);
     
-    // Log first few batter IDs to understand the structure
-    if (teamData.batters && teamData.batters.length > 0) {
-      console.log(`  - First 5 batter IDs: ${teamData.batters.slice(0, 5)}`);
-      
-      // Check if we can find player data for the first batter
-      const firstBatterId = teamData.batters[0];
-      const firstBatterData = teamData.players?.[`ID${firstBatterId}`];
-      console.log(`  - First batter (ID${firstBatterId}) data available: ${!!firstBatterData}`);
-      if (firstBatterData) {
-        console.log(`    - Name: ${firstBatterData.person?.fullName}`);
-        console.log(`    - Position: ${firstBatterData.position?.abbreviation || firstBatterData.position?.name}`);
-        console.log(`    - All keys: ${Object.keys(firstBatterData)}`);
-      }
-    }
-
-    // Extract batting lineup from batters array (NOT pitchers!)
+    // Extract batting lineup from batters array
     if (teamData.batters && teamData.batters.length > 0) {
       console.log(`📋 Processing ${teamData.batters.length} batters for ${teamData.team.name}`);
       
-      // Process ALL batters, not just first 9 - let the batting_order determine starters
-      teamData.batters.forEach((playerId: number, index: number) => {
+      // Process first 9 batters as the starting lineup
+      teamData.batters.slice(0, 9).forEach((playerId: number, index: number) => {
         const playerInfo = teamData.players?.[`ID${playerId}`];
         
         if (playerInfo?.person) {
           const position = playerInfo.position || {};
-          const battingOrder = index + 1; // MLB typically lists in batting order
+          const battingOrder = index + 1;
           
-          // Only include players 1-9 for batting lineup (starting lineup)
-          if (battingOrder <= 9) {
-            lineups.push({
-              game_id: parseInt(gameInfo.pk || boxscoreData.gamePk),
-              team_id: dbTeamId,
-              lineup_type: 'batting',
-              batting_order: battingOrder,
-              player_id: playerInfo.person.id,
-              player_name: playerInfo.person.fullName,
-              position: position.abbreviation || position.name || 'Unknown',
-              handedness: playerInfo.person.batSide?.code || 'R',
-              is_starter: true
-            });
-            
-            console.log(`⚾ Added batter: ${playerInfo.person.fullName} (#${battingOrder}, ${position.abbreviation || position.name})`);
-          } else {
-            console.log(`🪑 Bench player: ${playerInfo.person.fullName} (position ${battingOrder})`);
-          }
+          lineups.push({
+            game_id: gameId,
+            team_id: dbTeamId,
+            lineup_type: 'batting',
+            batting_order: battingOrder,
+            player_id: playerInfo.person.id,
+            player_name: playerInfo.person.fullName,
+            position: position.abbreviation || position.name || 'Unknown',
+            handedness: playerInfo.person.batSide?.code || 'R',
+            is_starter: true
+          });
+          
+          console.log(`⚾ Added batter: ${playerInfo.person.fullName} (#${battingOrder}, ${position.abbreviation || position.name})`);
         } else {
           console.log(`⚠️ No player info found for batter ID ${playerId}`);
         }
@@ -240,7 +220,7 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
           const isStarter = index === 0; // First pitcher is typically the starter
           
           lineups.push({
-            game_id: parseInt(gameInfo.pk || boxscoreData.gamePk),
+            game_id: gameId,
             team_id: dbTeamId,
             lineup_type: 'pitching',
             batting_order: null,
