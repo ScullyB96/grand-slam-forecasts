@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, Info, Target, Clock, Calculator, BarChart3, Trophy, Percent, Database } from 'lucide-react';
+import { TrendingUp, TrendingDown, Info, Target, Clock, Calculator, BarChart3, Trophy, Percent, Database, Users } from 'lucide-react';
 import ExplanationModal from './ExplanationModal';
 import PredictionDataTab from './PredictionDataTab';
+import LineupDataTab from './LineupDataTab';
 
 interface GamePrediction {
   id: number;
@@ -145,10 +146,14 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
 
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="prediction" className="flex items-center gap-2">
                 <Trophy className="h-4 w-4" />
                 Prediction
+              </TabsTrigger>
+              <TabsTrigger value="lineups" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Lineups
               </TabsTrigger>
               <TabsTrigger value="data" className="flex items-center gap-2">
                 <Database className="h-4 w-4" />
@@ -407,6 +412,15 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
                   View Details
                 </Button>
               </div>
+            </TabsContent>
+            
+            <TabsContent value="lineups" className="mt-6">
+              <LineupDataTab 
+                gameId={prediction.game_id}
+                homeTeam={homeTeam as TeamWithId}
+                awayTeam={awayTeam as TeamWithId}
+                prediction={prediction}
+              />
             </TabsContent>
             
             <TabsContent value="data" className="mt-6">

@@ -14,6 +14,81 @@ export type Database = {
   }
   public: {
     Tables: {
+      batting_splits: {
+        Row: {
+          at_bats: number | null
+          avg: number | null
+          created_at: string | null
+          doubles: number | null
+          games_played: number | null
+          hits: number | null
+          home_runs: number | null
+          id: number
+          obp: number | null
+          ops: number | null
+          player_id: number
+          rbi: number | null
+          runs: number | null
+          season: number
+          slg: number | null
+          strikeouts: number | null
+          team_id: number | null
+          triples: number | null
+          updated_at: string | null
+          vs_handedness: string
+          walks: number | null
+          wrc_plus: number | null
+        }
+        Insert: {
+          at_bats?: number | null
+          avg?: number | null
+          created_at?: string | null
+          doubles?: number | null
+          games_played?: number | null
+          hits?: number | null
+          home_runs?: number | null
+          id?: number
+          obp?: number | null
+          ops?: number | null
+          player_id: number
+          rbi?: number | null
+          runs?: number | null
+          season: number
+          slg?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          triples?: number | null
+          updated_at?: string | null
+          vs_handedness: string
+          walks?: number | null
+          wrc_plus?: number | null
+        }
+        Update: {
+          at_bats?: number | null
+          avg?: number | null
+          created_at?: string | null
+          doubles?: number | null
+          games_played?: number | null
+          hits?: number | null
+          home_runs?: number | null
+          id?: number
+          obp?: number | null
+          ops?: number | null
+          player_id?: number
+          rbi?: number | null
+          runs?: number | null
+          season?: number
+          slg?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          triples?: number | null
+          updated_at?: string | null
+          vs_handedness?: string
+          walks?: number | null
+          wrc_plus?: number | null
+        }
+        Relationships: []
+      }
       batting_stats: {
         Row: {
           at_bats: number | null
@@ -316,6 +391,66 @@ export type Database = {
         }
         Relationships: []
       }
+      game_lineups: {
+        Row: {
+          batting_order: number | null
+          created_at: string | null
+          game_id: number
+          handedness: string | null
+          id: string
+          is_starter: boolean | null
+          lineup_type: string
+          player_id: number
+          player_name: string
+          position: string | null
+          team_id: number
+          updated_at: string | null
+        }
+        Insert: {
+          batting_order?: number | null
+          created_at?: string | null
+          game_id: number
+          handedness?: string | null
+          id?: string
+          is_starter?: boolean | null
+          lineup_type: string
+          player_id: number
+          player_name: string
+          position?: string | null
+          team_id: number
+          updated_at?: string | null
+        }
+        Update: {
+          batting_order?: number | null
+          created_at?: string | null
+          game_id?: number
+          handedness?: string | null
+          id?: string
+          is_starter?: boolean | null
+          lineup_type?: string
+          player_id?: number
+          player_name?: string
+          position?: string | null
+          team_id?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_lineups_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+          {
+            foreignKeyName: "game_lineups_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       game_predictions: {
         Row: {
           away_win_probability: number
@@ -543,6 +678,78 @@ export type Database = {
           updated_at?: string | null
           venue_name?: string
           walks_factor?: number | null
+        }
+        Relationships: []
+      }
+      pitching_splits: {
+        Row: {
+          bb_9: number | null
+          created_at: string | null
+          earned_runs: number | null
+          era: number | null
+          games: number | null
+          games_started: number | null
+          hits_allowed: number | null
+          home_runs_allowed: number | null
+          hr_9: number | null
+          id: number
+          innings_pitched: number | null
+          k_9: number | null
+          player_id: number
+          runs_allowed: number | null
+          season: number
+          split_type: string
+          strikeouts: number | null
+          team_id: number | null
+          updated_at: string | null
+          walks: number | null
+          whip: number | null
+        }
+        Insert: {
+          bb_9?: number | null
+          created_at?: string | null
+          earned_runs?: number | null
+          era?: number | null
+          games?: number | null
+          games_started?: number | null
+          hits_allowed?: number | null
+          home_runs_allowed?: number | null
+          hr_9?: number | null
+          id?: number
+          innings_pitched?: number | null
+          k_9?: number | null
+          player_id: number
+          runs_allowed?: number | null
+          season: number
+          split_type: string
+          strikeouts?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          whip?: number | null
+        }
+        Update: {
+          bb_9?: number | null
+          created_at?: string | null
+          earned_runs?: number | null
+          era?: number | null
+          games?: number | null
+          games_started?: number | null
+          hits_allowed?: number | null
+          home_runs_allowed?: number | null
+          hr_9?: number | null
+          id?: number
+          innings_pitched?: number | null
+          k_9?: number | null
+          player_id?: number
+          runs_allowed?: number | null
+          season?: number
+          split_type?: string
+          strikeouts?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          whip?: number | null
         }
         Relationships: []
       }
