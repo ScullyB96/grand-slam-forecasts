@@ -24,7 +24,9 @@ serve(async (req) => {
     yesterday.setDate(yesterday.getDate() - 1);
     const testDate = yesterday.toISOString().split('T')[0];
 
-    console.log(`Testing model for date: ${testDate}`);
+    console.log(`🗓️ Testing model for date: ${testDate}`);
+    console.log(`📅 Current date: ${new Date().toISOString()}`);
+    console.log(`📅 Yesterday calculated as: ${yesterday.toISOString()}`);
 
     // Step 1: Ingest schedule for yesterday
     console.log('Step 1: Ingesting schedule...');

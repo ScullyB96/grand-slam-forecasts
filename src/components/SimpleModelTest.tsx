@@ -41,16 +41,27 @@ const SimpleModelTest: React.FC = () => {
   }, [selectedGameId, setSearchParams]);
 
   const runFullModelTest = async () => {
+    console.log('🚀 Starting full model test...');
     setTestRunning(true);
     setTestResults(null);
 
     try {
+      console.log('📡 Invoking simple-model-test function...');
       const { data, error } = await supabase.functions.invoke('simple-model-test');
 
+      console.log('📊 Function response:', { data, error });
+
       if (error) {
+        console.error('❌ Function error:', error);
         throw error;
       }
 
+      if (!data) {
+        console.error('❌ No data returned from function');
+        throw new Error('No response data from simple-model-test function');
+      }
+
+      console.log('✅ Function completed successfully:', data);
       setTestResults(data);
       
       if (data.success) {
@@ -60,6 +71,7 @@ const SimpleModelTest: React.FC = () => {
         });
         
         // Refresh games to show updated predictions
+        console.log('🔄 Refreshing games data...');
         refetchGames();
       } else {
         toast({
@@ -69,13 +81,20 @@ const SimpleModelTest: React.FC = () => {
         });
       }
     } catch (error: any) {
-      console.error('Model test error:', error);
+      console.error('💥 Model test error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+      
       toast({
         title: "Test Error",
         description: error.message || "Failed to run model test",
         variant: "destructive"
       });
     } finally {
+      console.log('🏁 Test completed, setting testRunning to false');
       setTestRunning(false);
     }
   };
