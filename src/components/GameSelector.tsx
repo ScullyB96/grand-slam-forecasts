@@ -156,6 +156,78 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     }
   };
 
+  const handleIngestTeamStats = async () => {
+    try {
+      toast({
+        title: "Ingesting Team Statistics",
+        description: "Fetching current season team stats from MLB API..."
+      });
+
+      const { error } = await supabase.functions.invoke('ingest-team-stats');
+      if (error) throw error;
+
+      toast({
+        title: "Team Stats Ingested Successfully",
+        description: "Current season team statistics have been updated"
+      });
+    } catch (error) {
+      console.error('Error ingesting team stats:', error);
+      toast({
+        title: "Team Stats Ingestion Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleIngestParkFactors = async () => {
+    try {
+      toast({
+        title: "Ingesting Park Factors",
+        description: "Updating ballpark factors for all venues..."
+      });
+
+      const { error } = await supabase.functions.invoke('ingest-park-factors');
+      if (error) throw error;
+
+      toast({
+        title: "Park Factors Ingested Successfully",
+        description: "Ballpark factors have been updated for all venues"
+      });
+    } catch (error) {
+      console.error('Error ingesting park factors:', error);
+      toast({
+        title: "Park Factors Ingestion Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleIngestWeatherData = async () => {
+    try {
+      toast({
+        title: "Ingesting Weather Data",
+        description: "Fetching weather forecasts for upcoming games..."
+      });
+
+      const { error } = await supabase.functions.invoke('ingest-weather-data');
+      if (error) throw error;
+
+      toast({
+        title: "Weather Data Ingested Successfully",
+        description: "Weather forecasts have been updated for upcoming games"
+      });
+    } catch (error) {
+      console.error('Error ingesting weather data:', error);
+      toast({
+        title: "Weather Data Ingestion Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleShowDebugLogs = () => {
     if (debugData?.lastJob) {
       console.log('=== SCHEDULE DEBUG INFO ===');
@@ -265,7 +337,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <Calendar className="h-5 w-5" />
           Games for {formatDisplayDate(selectedDate)}
         </CardTitle>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-1 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -287,11 +359,35 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             <Bug className="h-4 w-4 mr-2" />
             Debug
           </Button>
+        </div>
+      </CardHeader>
+      
+      {/* Data Ingestion Controls */}
+      <CardContent className="pt-0">
+        <div className="mb-4 p-3 bg-muted rounded-lg">
+          <h4 className="text-sm font-medium mb-2">Data Pipeline (Required for Predictions)</h4>
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={handleIngestTeamStats}>
+              📊 Ingest Team Stats
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleIngestParkFactors}>
+              🏟️ Ingest Park Factors
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleIngestWeatherData}>
+              🌤️ Ingest Weather Data
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Run these functions first to populate the required data for predictions
+          </p>
+        </div>
+        
+        <div className="flex gap-2 flex-wrap mb-4">
           <Button
             variant="default"
             size="sm"
             onClick={handleGeneratePredictions}
-            disabled={generatingPredictions || !games?.length || !isLastRunSuccessful}
+            disabled={generatingPredictions || !games?.length}
           >
             {generatingPredictions ? (
               <>
@@ -306,14 +402,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             <RefreshPredictionsButton
               gameIds={games.map(g => g.game_id)}
               onRefresh={() => refetch()}
-              disabled={!isLastRunSuccessful}
             />
           )}
         </div>
-      </CardHeader>
-      
-      {/* Status indicators */}
-      <CardContent className="pt-0">
         <div className="flex gap-2 mb-4 text-xs">
           {debugData && (
             <div className={`flex items-center gap-1 px-2 py-1 rounded ${

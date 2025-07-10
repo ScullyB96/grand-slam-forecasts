@@ -245,35 +245,60 @@ async function getTeamStats(supabase: any, teamId: number): Promise<TeamStats> {
     .eq('season', new Date().getFullYear())
     .single();
 
-  if (error || !data) {
-    // Return default stats if not found
-    return {
-      wins: 50, losses: 50, runs_scored: 500, runs_allowed: 500,
-      team_era: 4.50, team_avg: 0.250, team_obp: 0.320, team_slg: 0.400
-    };
+  if (error) {
+    console.error(`Critical Error: No team stats found for team_id ${teamId}`, error);
+    throw new Error(`Missing team statistics for team ${teamId} - cannot generate predictions without this data`);
   }
 
+  if (!data) {
+    console.error(`Critical Error: Team stats data is null for team_id ${teamId}`);
+    throw new Error(`Team statistics data missing for team ${teamId} - predictions require current season stats`);
+  }
+
+  console.log(`Successfully retrieved team stats for team ${teamId}:`, data);
   return data;
 }
 
 async function getParkFactors(supabase: any, venueName: string): Promise<ParkFactors> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('park_factors')
     .select('runs_factor, hr_factor, hits_factor')
     .eq('venue_name', venueName)
     .eq('season', new Date().getFullYear())
     .maybeSingle();
 
-  return data || { runs_factor: 1.0, hr_factor: 1.0, hits_factor: 1.0 };
+  if (error) {
+    console.error(`Error fetching park factors for ${venueName}:`, error);
+    throw new Error(`Failed to fetch park factors for ${venueName}: ${error.message}`);
+  }
+
+  if (!data) {
+    console.error(`Critical Error: No park factors found for venue ${venueName}`);
+    throw new Error(`Missing park factors for venue ${venueName} - cannot generate accurate predictions without ballpark data`);
+  }
+
+  console.log(`Successfully retrieved park factors for ${venueName}:`, data);
+  return data;
 }
 
-async function getWeatherData(supabase: any, gameId: number): Promise<WeatherData | null> {
-  const { data } = await supabase
+async function getWeatherData(supabase: any, gameId: number): Promise<WeatherData> {
+  const { data, error } = await supabase
     .from('weather_data')
     .select('temperature_f, wind_speed_mph, wind_direction, condition')
     .eq('game_id', gameId)
     .maybeSingle();
 
+  if (error) {
+    console.error(`Error fetching weather data for game ${gameId}:`, error);
+    throw new Error(`Failed to fetch weather data for game ${gameId}: ${error.message}`);
+  }
+
+  if (!data) {
+    console.error(`Critical Error: No weather data found for game ${gameId}`);
+    throw new Error(`Missing weather data for game ${gameId} - weather conditions significantly impact game outcomes`);
+  }
+
+  console.log(`Successfully retrieved weather data for game ${gameId}:`, data);
   return data;
 }
 
@@ -282,7 +307,7 @@ async function generatePrediction(
   homeStats: TeamStats,
   awayStats: TeamStats,
   parkFactors: ParkFactors,
-  weather: WeatherData | null
+  weather: WeatherData
 ) {
   // Monte Carlo simulation parameters
   const simulations = 10000;
@@ -302,14 +327,12 @@ async function generatePrediction(
   }
   
   let weatherAdjustment = 1.0;
-  if (weather) {
-    // Wind affects home runs, temperature affects ball flight
-    if (weather.wind_direction === 'out' || weather.wind_speed_mph > 15) {
-      weatherAdjustment += 0.05;
-    }
-    if (weather.temperature_f < 50) {
-      weatherAdjustment -= 0.03;
-    }
+  // Weather affects game conditions (no longer nullable)
+  if (weather.wind_direction === 'out' || (weather.wind_speed_mph && weather.wind_speed_mph > 15)) {
+    weatherAdjustment += 0.05;
+  }
+  if (weather.temperature_f && weather.temperature_f < 50) {
+    weatherAdjustment -= 0.03;
   }
 
   // Run Monte Carlo simulation
@@ -348,7 +371,7 @@ async function generatePrediction(
     offensive_edge: homeStats.runs_scored > awayStats.runs_scored ? 'home' : 'away',
     park_factors: parkFactors.runs_factor > 1.05 ? 'hitter_friendly' : 
                   parkFactors.runs_factor < 0.95 ? 'pitcher_friendly' : 'neutral',
-    weather_impact: weather ? `${weather.condition}, ${weather.temperature_f}°F` : null
+    weather_impact: `${weather.condition}, ${weather.temperature_f}°F`
   };
 
   return {
