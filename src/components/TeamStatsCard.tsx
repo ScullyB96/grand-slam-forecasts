@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface TeamStats {
+  id: number;
   team_id: number;
   season: number;
   wins: number;
@@ -22,6 +23,8 @@ interface Team {
   abbreviation: string;
   league: string;
   division: string;
+  city?: string;
+  venue_name?: string;
 }
 
 interface TeamStatsCardProps {
@@ -32,9 +35,10 @@ interface TeamStatsCardProps {
 const TeamStatsCard = ({ team, stats }: TeamStatsCardProps) => {
   const winPercentage = stats.wins / (stats.wins + stats.losses);
   const runDifferential = stats.runs_scored - stats.runs_allowed;
+  const ops = stats.team_obp + stats.team_slg;
 
   return (
-    <Card className="w-full">
+    <Card className="w-full hover:shadow-md transition-shadow">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl">{team.name}</CardTitle>
@@ -72,12 +76,16 @@ const TeamStatsCard = ({ team, stats }: TeamStatsCardProps) => {
             </div>
             <div>
               <div className="text-sm text-muted-foreground">OPS</div>
-              <div className="text-lg font-semibold">
-                {(stats.team_obp + stats.team_slg).toFixed(3)}
-              </div>
+              <div className="text-lg font-semibold">{ops.toFixed(3)}</div>
             </div>
           </div>
         </div>
+        {team.venue_name && (
+          <div className="mt-4 pt-3 border-t">
+            <div className="text-sm text-muted-foreground">Home Venue</div>
+            <div className="text-sm font-medium">{team.venue_name}</div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -14,6 +14,242 @@ export type Database = {
   }
   public: {
     Tables: {
+      batting_stats: {
+        Row: {
+          at_bats: number | null
+          avg: number | null
+          babip: number | null
+          caught_stealing: number | null
+          created_at: string | null
+          doubles: number | null
+          games_played: number | null
+          hit_by_pitch: number | null
+          hits: number | null
+          home_runs: number | null
+          id: number
+          iso: number | null
+          obp: number | null
+          ops: number | null
+          player_id: number
+          rbi: number | null
+          runs: number | null
+          sacrifice_flies: number | null
+          sacrifice_hits: number | null
+          season: number
+          slg: number | null
+          stolen_bases: number | null
+          strikeouts: number | null
+          team_id: number | null
+          triples: number | null
+          updated_at: string | null
+          walks: number | null
+          wrc_plus: number | null
+        }
+        Insert: {
+          at_bats?: number | null
+          avg?: number | null
+          babip?: number | null
+          caught_stealing?: number | null
+          created_at?: string | null
+          doubles?: number | null
+          games_played?: number | null
+          hit_by_pitch?: number | null
+          hits?: number | null
+          home_runs?: number | null
+          id?: number
+          iso?: number | null
+          obp?: number | null
+          ops?: number | null
+          player_id: number
+          rbi?: number | null
+          runs?: number | null
+          sacrifice_flies?: number | null
+          sacrifice_hits?: number | null
+          season: number
+          slg?: number | null
+          stolen_bases?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          triples?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          wrc_plus?: number | null
+        }
+        Update: {
+          at_bats?: number | null
+          avg?: number | null
+          babip?: number | null
+          caught_stealing?: number | null
+          created_at?: string | null
+          doubles?: number | null
+          games_played?: number | null
+          hit_by_pitch?: number | null
+          hits?: number | null
+          home_runs?: number | null
+          id?: number
+          iso?: number | null
+          obp?: number | null
+          ops?: number | null
+          player_id?: number
+          rbi?: number | null
+          runs?: number | null
+          sacrifice_flies?: number | null
+          sacrifice_hits?: number | null
+          season?: number
+          slg?: number | null
+          stolen_bases?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          triples?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          wrc_plus?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batting_stats_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["player_id"]
+          },
+          {
+            foreignKeyName: "batting_stats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      bullpen_stats: {
+        Row: {
+          avg_leverage_index: number | null
+          bb_9: number | null
+          blown_saves: number | null
+          created_at: string | null
+          era: number | null
+          holds: number | null
+          hr_9: number | null
+          id: number
+          k_9: number | null
+          save_opportunities: number | null
+          save_percentage: number | null
+          saves: number | null
+          season: number
+          team_id: number
+          updated_at: string | null
+          whip: number | null
+          win_probability_added: number | null
+        }
+        Insert: {
+          avg_leverage_index?: number | null
+          bb_9?: number | null
+          blown_saves?: number | null
+          created_at?: string | null
+          era?: number | null
+          holds?: number | null
+          hr_9?: number | null
+          id?: number
+          k_9?: number | null
+          save_opportunities?: number | null
+          save_percentage?: number | null
+          saves?: number | null
+          season: number
+          team_id: number
+          updated_at?: string | null
+          whip?: number | null
+          win_probability_added?: number | null
+        }
+        Update: {
+          avg_leverage_index?: number | null
+          bb_9?: number | null
+          blown_saves?: number | null
+          created_at?: string | null
+          era?: number | null
+          holds?: number | null
+          hr_9?: number | null
+          id?: number
+          k_9?: number | null
+          save_opportunities?: number | null
+          save_percentage?: number | null
+          saves?: number | null
+          season?: number
+          team_id?: number
+          updated_at?: string | null
+          whip?: number | null
+          win_probability_added?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bullpen_stats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      data_ingestion_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          data_source: string | null
+          error_details: Json | null
+          errors_count: number | null
+          id: number
+          job_name: string
+          job_type: string
+          max_retries: number | null
+          next_retry_at: string | null
+          records_inserted: number | null
+          records_processed: number | null
+          records_updated: number | null
+          retry_count: number | null
+          season: number | null
+          started_at: string | null
+          status: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          data_source?: string | null
+          error_details?: Json | null
+          errors_count?: number | null
+          id?: number
+          job_name: string
+          job_type: string
+          max_retries?: number | null
+          next_retry_at?: string | null
+          records_inserted?: number | null
+          records_processed?: number | null
+          records_updated?: number | null
+          retry_count?: number | null
+          season?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          data_source?: string | null
+          error_details?: Json | null
+          errors_count?: number | null
+          id?: number
+          job_name?: string
+          job_type?: string
+          max_retries?: number | null
+          next_retry_at?: string | null
+          records_inserted?: number | null
+          records_processed?: number | null
+          records_updated?: number | null
+          retry_count?: number | null
+          season?: number | null
+          started_at?: string | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       game_predictions: {
         Row: {
           away_win_probability: number
@@ -133,6 +369,260 @@ export type Database = {
           },
         ]
       }
+      park_factors: {
+        Row: {
+          altitude: number | null
+          center_field_distance: number | null
+          center_field_height: number | null
+          created_at: string | null
+          foul_territory_rating: number | null
+          hits_factor: number | null
+          hr_factor: number | null
+          id: number
+          left_field_distance: number | null
+          left_field_height: number | null
+          right_field_distance: number | null
+          right_field_height: number | null
+          runs_factor: number | null
+          season: number
+          strikeouts_factor: number | null
+          surface: string | null
+          updated_at: string | null
+          venue_name: string
+          walks_factor: number | null
+        }
+        Insert: {
+          altitude?: number | null
+          center_field_distance?: number | null
+          center_field_height?: number | null
+          created_at?: string | null
+          foul_territory_rating?: number | null
+          hits_factor?: number | null
+          hr_factor?: number | null
+          id?: number
+          left_field_distance?: number | null
+          left_field_height?: number | null
+          right_field_distance?: number | null
+          right_field_height?: number | null
+          runs_factor?: number | null
+          season: number
+          strikeouts_factor?: number | null
+          surface?: string | null
+          updated_at?: string | null
+          venue_name: string
+          walks_factor?: number | null
+        }
+        Update: {
+          altitude?: number | null
+          center_field_distance?: number | null
+          center_field_height?: number | null
+          created_at?: string | null
+          foul_territory_rating?: number | null
+          hits_factor?: number | null
+          hr_factor?: number | null
+          id?: number
+          left_field_distance?: number | null
+          left_field_height?: number | null
+          right_field_distance?: number | null
+          right_field_height?: number | null
+          runs_factor?: number | null
+          season?: number
+          strikeouts_factor?: number | null
+          surface?: string | null
+          updated_at?: string | null
+          venue_name?: string
+          walks_factor?: number | null
+        }
+        Relationships: []
+      }
+      pitching_stats: {
+        Row: {
+          babip: number | null
+          bb_9: number | null
+          blown_saves: number | null
+          complete_games: number | null
+          created_at: string | null
+          earned_runs: number | null
+          era: number | null
+          fip: number | null
+          games: number | null
+          games_started: number | null
+          hit_batters: number | null
+          hits_allowed: number | null
+          holds: number | null
+          home_runs_allowed: number | null
+          hr_9: number | null
+          id: number
+          innings_pitched: number | null
+          intentional_walks: number | null
+          k_9: number | null
+          player_id: number
+          runs_allowed: number | null
+          save_opportunities: number | null
+          saves: number | null
+          season: number
+          shutouts: number | null
+          strand_rate: number | null
+          strikeouts: number | null
+          team_id: number | null
+          updated_at: string | null
+          walks: number | null
+          whip: number | null
+          wild_pitches: number | null
+          xfip: number | null
+        }
+        Insert: {
+          babip?: number | null
+          bb_9?: number | null
+          blown_saves?: number | null
+          complete_games?: number | null
+          created_at?: string | null
+          earned_runs?: number | null
+          era?: number | null
+          fip?: number | null
+          games?: number | null
+          games_started?: number | null
+          hit_batters?: number | null
+          hits_allowed?: number | null
+          holds?: number | null
+          home_runs_allowed?: number | null
+          hr_9?: number | null
+          id?: number
+          innings_pitched?: number | null
+          intentional_walks?: number | null
+          k_9?: number | null
+          player_id: number
+          runs_allowed?: number | null
+          save_opportunities?: number | null
+          saves?: number | null
+          season: number
+          shutouts?: number | null
+          strand_rate?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          whip?: number | null
+          wild_pitches?: number | null
+          xfip?: number | null
+        }
+        Update: {
+          babip?: number | null
+          bb_9?: number | null
+          blown_saves?: number | null
+          complete_games?: number | null
+          created_at?: string | null
+          earned_runs?: number | null
+          era?: number | null
+          fip?: number | null
+          games?: number | null
+          games_started?: number | null
+          hit_batters?: number | null
+          hits_allowed?: number | null
+          holds?: number | null
+          home_runs_allowed?: number | null
+          hr_9?: number | null
+          id?: number
+          innings_pitched?: number | null
+          intentional_walks?: number | null
+          k_9?: number | null
+          player_id?: number
+          runs_allowed?: number | null
+          save_opportunities?: number | null
+          saves?: number | null
+          season?: number
+          shutouts?: number | null
+          strand_rate?: number | null
+          strikeouts?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          walks?: number | null
+          whip?: number | null
+          wild_pitches?: number | null
+          xfip?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pitching_stats_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "players"
+            referencedColumns: ["player_id"]
+          },
+          {
+            foreignKeyName: "pitching_stats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      players: {
+        Row: {
+          active: boolean | null
+          batting_hand: string | null
+          birth_date: string | null
+          created_at: string | null
+          first_name: string | null
+          full_name: string
+          height_inches: number | null
+          id: number
+          jersey_number: number | null
+          last_name: string | null
+          pitching_hand: string | null
+          player_id: number
+          position: string | null
+          team_id: number | null
+          updated_at: string | null
+          weight_pounds: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          batting_hand?: string | null
+          birth_date?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          full_name: string
+          height_inches?: number | null
+          id?: number
+          jersey_number?: number | null
+          last_name?: string | null
+          pitching_hand?: string | null
+          player_id: number
+          position?: string | null
+          team_id?: number | null
+          updated_at?: string | null
+          weight_pounds?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          batting_hand?: string | null
+          birth_date?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          full_name?: string
+          height_inches?: number | null
+          id?: number
+          jersey_number?: number | null
+          last_name?: string | null
+          pitching_hand?: string | null
+          player_id?: number
+          position?: string | null
+          team_id?: number | null
+          updated_at?: string | null
+          weight_pounds?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "players_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       team_stats: {
         Row: {
           created_at: string | null
@@ -189,6 +679,86 @@ export type Database = {
           },
         ]
       }
+      team_trends: {
+        Row: {
+          away_losses: number | null
+          away_wins: number | null
+          created_at: string | null
+          day_game_losses: number | null
+          day_game_wins: number | null
+          home_losses: number | null
+          home_wins: number | null
+          id: number
+          last_10_losses: number | null
+          last_10_wins: number | null
+          last_30_losses: number | null
+          last_30_wins: number | null
+          night_game_losses: number | null
+          night_game_wins: number | null
+          season: number
+          team_id: number
+          updated_at: string | null
+          vs_left_losses: number | null
+          vs_left_wins: number | null
+          vs_right_losses: number | null
+          vs_right_wins: number | null
+        }
+        Insert: {
+          away_losses?: number | null
+          away_wins?: number | null
+          created_at?: string | null
+          day_game_losses?: number | null
+          day_game_wins?: number | null
+          home_losses?: number | null
+          home_wins?: number | null
+          id?: number
+          last_10_losses?: number | null
+          last_10_wins?: number | null
+          last_30_losses?: number | null
+          last_30_wins?: number | null
+          night_game_losses?: number | null
+          night_game_wins?: number | null
+          season: number
+          team_id: number
+          updated_at?: string | null
+          vs_left_losses?: number | null
+          vs_left_wins?: number | null
+          vs_right_losses?: number | null
+          vs_right_wins?: number | null
+        }
+        Update: {
+          away_losses?: number | null
+          away_wins?: number | null
+          created_at?: string | null
+          day_game_losses?: number | null
+          day_game_wins?: number | null
+          home_losses?: number | null
+          home_wins?: number | null
+          id?: number
+          last_10_losses?: number | null
+          last_10_wins?: number | null
+          last_30_losses?: number | null
+          last_30_wins?: number | null
+          night_game_losses?: number | null
+          night_game_wins?: number | null
+          season?: number
+          team_id?: number
+          updated_at?: string | null
+          vs_left_losses?: number | null
+          vs_left_wins?: number | null
+          vs_right_losses?: number | null
+          vs_right_wins?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_trends_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       teams: {
         Row: {
           abbreviation: string
@@ -198,7 +768,9 @@ export type Database = {
           id: number
           league: string
           name: string
+          team_id: number | null
           updated_at: string | null
+          venue_name: string | null
         }
         Insert: {
           abbreviation: string
@@ -208,7 +780,9 @@ export type Database = {
           id?: number
           league: string
           name: string
+          team_id?: number | null
           updated_at?: string | null
+          venue_name?: string | null
         }
         Update: {
           abbreviation?: string
@@ -218,9 +792,67 @@ export type Database = {
           id?: number
           league?: string
           name?: string
+          team_id?: number | null
           updated_at?: string | null
+          venue_name?: string | null
         }
         Relationships: []
+      }
+      weather_data: {
+        Row: {
+          condition: string | null
+          created_at: string | null
+          game_id: number
+          humidity_percent: number | null
+          id: number
+          precipitation_inches: number | null
+          pressure_inches: number | null
+          temperature_f: number | null
+          updated_at: string | null
+          visibility_miles: number | null
+          wind_direction: string | null
+          wind_direction_degrees: number | null
+          wind_speed_mph: number | null
+        }
+        Insert: {
+          condition?: string | null
+          created_at?: string | null
+          game_id: number
+          humidity_percent?: number | null
+          id?: number
+          precipitation_inches?: number | null
+          pressure_inches?: number | null
+          temperature_f?: number | null
+          updated_at?: string | null
+          visibility_miles?: number | null
+          wind_direction?: string | null
+          wind_direction_degrees?: number | null
+          wind_speed_mph?: number | null
+        }
+        Update: {
+          condition?: string | null
+          created_at?: string | null
+          game_id?: number
+          humidity_percent?: number | null
+          id?: number
+          precipitation_inches?: number | null
+          pressure_inches?: number | null
+          temperature_f?: number | null
+          updated_at?: string | null
+          visibility_miles?: number | null
+          wind_direction?: string | null
+          wind_direction_degrees?: number | null
+          wind_speed_mph?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_data_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: true
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+        ]
       }
     }
     Views: {
