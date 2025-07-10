@@ -176,7 +176,7 @@ serve(async (req) => {
     console.log(`Official lineups found for ${officialLineupsFound}/${games.length} games`);
 
     // For testing: Add specific lineup for games that need them
-    const testGames = [777165, 777168]; // Add multiple test games
+    const testGames = [777165, 777168, 777166]; // Add Cubs vs Twins game
     for (const gameId of testGames) {
       if (games.some(game => game.game_id === gameId)) {
         console.log(`Adding test lineup for game ${gameId}`);
@@ -317,6 +317,11 @@ function createTestLineupForGame(gameId: number, gameData: any) {
   // Special case for Mets vs Orioles game (777165)
   if (gameId === 777165) {
     return createMetsOriolesTestLineup();
+  }
+  
+  // Special case for Cubs vs Twins game (777166)
+  if (gameId === 777166) {
+    return createCubsTwinsTestLineup();
   }
   
   // Generic test lineup creation for other games
@@ -462,6 +467,99 @@ function createMetsOriolesTestLineup() {
   });
   
   console.log(`Created test lineup for Mets vs Orioles: ${lineups.length} entries`);
+  return lineups;
+}
+
+// Create test lineup for Cubs vs Twins game (777166)
+function createCubsTwinsTestLineup() {
+  const gameId = 777166;
+  const cubsTeamId = 127; // CHC (database ID)
+  const twinsTeamId = 126; // MIN (database ID)
+  
+  const lineups: any[] = [];
+  
+  // Cubs lineup (away team) - typical Cubs batting order
+  const cubsLineup = [
+    { name: 'N. Hoerner', position: '2B', handedness: 'R' },
+    { name: 'C. Bellinger', position: 'CF', handedness: 'L' },
+    { name: 'I. Paredes', position: '3B', handedness: 'R' },
+    { name: 'S. Suzuki', position: 'RF', handedness: 'R' },
+    { name: 'P. Crow-Armstrong', position: 'LF', handedness: 'L' },
+    { name: 'D. Swanson', position: 'SS', handedness: 'R' },
+    { name: 'M. Busch', position: '1B', handedness: 'L' },
+    { name: 'M. Amaya', position: 'C', handedness: 'R' },
+    { name: 'C. Rea', position: 'DH', handedness: 'R' }
+  ];
+  
+  // Twins lineup (home team) - typical Twins batting order
+  const twinsLineup = [
+    { name: 'C. Correa', position: 'SS', handedness: 'R' },
+    { name: 'R. Lewis Jr.', position: '3B', handedness: 'R' },
+    { name: 'M. Wallner', position: 'LF', handedness: 'L' },
+    { name: 'T. Larnach', position: 'RF', handedness: 'L' },
+    { name: 'W. Castro', position: '2B', handedness: 'S' },
+    { name: 'C. Julien', position: '1B', handedness: 'L' },
+    { name: 'B. Lee', position: 'CF', handedness: 'L' },
+    { name: 'R. Jeffers', position: 'C', handedness: 'R' },
+    { name: 'C. Paddack', position: 'DH', handedness: 'R' }
+  ];
+  
+  // Add Cubs batting lineup
+  cubsLineup.forEach((player, index) => {
+    lineups.push({
+      game_id: gameId,
+      team_id: cubsTeamId,
+      lineup_type: 'batting',
+      batting_order: index + 1,
+      player_id: 777000 + index,
+      player_name: player.name,
+      position: player.position,
+      handedness: player.handedness,
+      is_starter: true
+    });
+  });
+  
+  // Add Twins batting lineup
+  twinsLineup.forEach((player, index) => {
+    lineups.push({
+      game_id: gameId,
+      team_id: twinsTeamId,
+      lineup_type: 'batting',
+      batting_order: index + 1,
+      player_id: 777100 + index,
+      player_name: player.name,
+      position: player.position,
+      handedness: player.handedness,
+      is_starter: true
+    });
+  });
+  
+  // Add starting pitchers
+  lineups.push({
+    game_id: gameId,
+    team_id: cubsTeamId,
+    lineup_type: 'pitching',
+    batting_order: null,
+    player_id: 777200,
+    player_name: 'Colin Rea',
+    position: 'SP',
+    handedness: 'R',
+    is_starter: true
+  });
+  
+  lineups.push({
+    game_id: gameId,
+    team_id: twinsTeamId,
+    lineup_type: 'pitching',
+    batting_order: null,
+    player_id: 777201,
+    player_name: 'Chris Paddack',
+    position: 'SP',
+    handedness: 'R',
+    is_starter: true
+  });
+  
+  console.log(`Created test lineup for Cubs vs Twins: ${lineups.length} entries`);
   return lineups;
 }
 
