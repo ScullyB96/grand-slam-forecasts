@@ -40,7 +40,7 @@ interface WeatherData {
   condition: string;
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   console.log('=== GENERATE PREDICTIONS FUNCTION CALLED ===');
   console.log('Request method:', req.method);
   console.log('Request URL:', req.url);
@@ -73,6 +73,9 @@ Deno.serve(async (req) => {
 
     if (games.length === 0) {
       console.log('No games found to predict');
+      // Complete the job even when no games found
+      await logJobCompletion(supabase, jobId, 0, 0);
+      
       return new Response(
         JSON.stringify({ 
           success: false, 
@@ -140,6 +143,16 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in generate-predictions function:', error);
+    
+    // Try to complete the job with error status, but don't fail if this fails
+    try {
+      if (typeof jobId !== 'undefined') {
+        await logJobCompletion(supabase, jobId, 0, 1);
+      }
+    } catch (jobError) {
+      console.error('Failed to log job completion:', jobError);
+    }
+    
     return new Response(
       JSON.stringify({ 
         success: false,
