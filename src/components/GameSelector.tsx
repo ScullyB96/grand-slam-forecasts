@@ -365,20 +365,23 @@ const GameSelector: React.FC<GameSelectorProps> = ({
       {/* Data Ingestion Controls */}
       <CardContent className="pt-0">
         <div className="mb-4 p-3 bg-muted rounded-lg">
-          <h4 className="text-sm font-medium mb-2">Data Pipeline (Required for Predictions)</h4>
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="outline" size="sm" onClick={handleIngestTeamStats}>
-              📊 Ingest Team Stats
+          <h4 className="text-sm font-medium mb-2">🤖 Advanced ML Prediction Engine</h4>
+          <div className="flex gap-2 flex-wrap mb-2">
+            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('data-audit-engine', { body: { enable_mock_fallback: true } })}>
+              🔍 Data Audit
             </Button>
-            <Button variant="outline" size="sm" onClick={handleIngestParkFactors}>
-              🏟️ Ingest Park Factors
+            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('feature-engineering', { body: { target_date: selectedDate } })}>
+              🔧 Feature Engineering
             </Button>
-            <Button variant="outline" size="sm" onClick={handleIngestWeatherData}>
-              🌤️ Ingest Weather Data
+            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('ml-prediction-engine', { body: { game_ids: games?.map(g => g.game_id) } })}>
+              🧠 ML Predictions
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => supabase.functions.invoke('model-validation', { body: { validation_type: 'all' } })}>
+              📊 Model Health
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Run these functions first to populate the required data for predictions
+          <p className="text-xs text-muted-foreground">
+            Advanced ML pipeline with XGBoost + Monte Carlo, comprehensive validation, and real-time monitoring
           </p>
         </div>
         

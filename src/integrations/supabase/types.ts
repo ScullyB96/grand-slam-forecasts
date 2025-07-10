@@ -190,6 +190,45 @@ export type Database = {
           },
         ]
       }
+      data_audit_results: {
+        Row: {
+          anomalies: Json | null
+          audit_date: string
+          audit_type: string
+          completeness_score: number | null
+          created_at: string | null
+          data_source: string
+          error_details: string | null
+          id: number
+          metrics: Json | null
+          status: string
+        }
+        Insert: {
+          anomalies?: Json | null
+          audit_date?: string
+          audit_type: string
+          completeness_score?: number | null
+          created_at?: string | null
+          data_source: string
+          error_details?: string | null
+          id?: number
+          metrics?: Json | null
+          status: string
+        }
+        Update: {
+          anomalies?: Json | null
+          audit_date?: string
+          audit_type?: string
+          completeness_score?: number | null
+          created_at?: string | null
+          data_source?: string
+          error_details?: string | null
+          id?: number
+          metrics?: Json | null
+          status?: string
+        }
+        Relationships: []
+      }
       data_ingestion_jobs: {
         Row: {
           completed_at: string | null
@@ -247,6 +286,33 @@ export type Database = {
           season?: number | null
           started_at?: string | null
           status?: string | null
+        }
+        Relationships: []
+      }
+      feature_engineering_cache: {
+        Row: {
+          created_at: string | null
+          feature_version: string
+          features: Json
+          game_date: string
+          id: number
+          team_id: number
+        }
+        Insert: {
+          created_at?: string | null
+          feature_version: string
+          features: Json
+          game_date: string
+          id?: number
+          team_id: number
+        }
+        Update: {
+          created_at?: string | null
+          feature_version?: string
+          features?: Json
+          game_date?: string
+          id?: number
+          team_id?: number
         }
         Relationships: []
       }
@@ -371,6 +437,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ml_model_metadata: {
+        Row: {
+          created_at: string | null
+          feature_importance: Json | null
+          hyperparameters: Json | null
+          id: number
+          is_active: boolean | null
+          model_name: string
+          model_type: string
+          model_version: string
+          training_date: string
+          training_metrics: Json | null
+          validation_metrics: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          feature_importance?: Json | null
+          hyperparameters?: Json | null
+          id?: number
+          is_active?: boolean | null
+          model_name: string
+          model_type: string
+          model_version: string
+          training_date: string
+          training_metrics?: Json | null
+          validation_metrics?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          feature_importance?: Json | null
+          hyperparameters?: Json | null
+          id?: number
+          is_active?: boolean | null
+          model_name?: string
+          model_type?: string
+          model_version?: string
+          training_date?: string
+          training_metrics?: Json | null
+          validation_metrics?: Json | null
+        }
+        Relationships: []
       }
       park_factors: {
         Row: {
@@ -622,6 +730,78 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prediction_performance: {
+        Row: {
+          actual_away_score: number | null
+          actual_home_score: number | null
+          actual_winner: string | null
+          confidence_score: number | null
+          created_at: string | null
+          game_date: string
+          game_id: number | null
+          id: number
+          model_id: number | null
+          predicted_away_score: number | null
+          predicted_away_win_prob: number | null
+          predicted_home_score: number | null
+          predicted_home_win_prob: number | null
+          prediction_accuracy: number | null
+          prediction_date: string
+          score_mae: number | null
+        }
+        Insert: {
+          actual_away_score?: number | null
+          actual_home_score?: number | null
+          actual_winner?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          game_date: string
+          game_id?: number | null
+          id?: number
+          model_id?: number | null
+          predicted_away_score?: number | null
+          predicted_away_win_prob?: number | null
+          predicted_home_score?: number | null
+          predicted_home_win_prob?: number | null
+          prediction_accuracy?: number | null
+          prediction_date: string
+          score_mae?: number | null
+        }
+        Update: {
+          actual_away_score?: number | null
+          actual_home_score?: number | null
+          actual_winner?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          game_date?: string
+          game_id?: number | null
+          id?: number
+          model_id?: number | null
+          predicted_away_score?: number | null
+          predicted_away_win_prob?: number | null
+          predicted_home_score?: number | null
+          predicted_home_win_prob?: number | null
+          prediction_accuracy?: number | null
+          prediction_date?: string
+          score_mae?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_performance_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+          {
+            foreignKeyName: "prediction_performance_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "ml_model_metadata"
             referencedColumns: ["id"]
           },
         ]
