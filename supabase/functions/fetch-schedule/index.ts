@@ -308,6 +308,7 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
       if (error) {
         console.error(`Error upserting game ${game.gamePk}`, error);
+        console.error(`Game data that failed:`, JSON.stringify(gameData, null, 2));
         errors.push(`Game ${game.gamePk}: ${error.message}`);
       } else {
         processedCount++;
