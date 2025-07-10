@@ -1,417 +1,283 @@
+
 import React, { useState } from 'react';
 import Header from '@/components/Header';
-import { useScheduleDebug, useVerifyIngestion } from '@/hooks/useScheduleDebug';
 import { useGames } from '@/hooks/useGames';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, RefreshCw, Download, Bug, CheckCircle, XCircle, AlertTriangle, Database, Activity } from 'lucide-react';
+import { Settings, RefreshCw, Database, Calendar, Users, Activity } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { PlayerStatsBackfillCard } from '@/components/PlayerStatsBackfillCard';
-import LineupMonitorCard from '@/components/LineupMonitorCard';
-import LineupOrchestratorCard from '@/components/LineupOrchestratorCard';
-import DataQualityDashboard from '@/components/DataQualityDashboard';
-import AutoLineupScheduler from '@/components/AutoLineupScheduler';
+import { useGameLineups } from '@/hooks/useGameLineups';
 
 const Admin = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [isFetching, setIsFetching] = useState(false);
-  const { data: games, refetch } = useGames(selectedDate);
-  const { data: debugData, refetch: refetchDebug } = useScheduleDebug();
-  const { data: verificationData } = useVerifyIngestion(selectedDate);
+  const [testGameId, setTestGameId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const { data: games, refetch: refetchGames } = useGames(selectedDate);
+  const { data: testLineups, refetch: refetchLineups } = useGameLineups(testGameId || 0);
   const { toast } = useToast();
 
-  const isLastRunSuccessful = debugData?.lastJob?.status === 'completed' || 
-                              (games && games.length > 0);
-
   const handleFetchSchedule = async () => {
-    setIsFetching(true);
+    setIsLoading(true);
     try {
-      console.log('Triggering schedule fetch...');
+      console.log('Fetching schedule for:', selectedDate);
       
       const { data, error } = await supabase.functions.invoke('fetch-schedule', {
         body: { date: selectedDate }
       });
       
-      if (error) {
-        console.error('Supabase function invoke error:', error);
-        
-        try {
-          const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
-          console.log('Debug response after error:', debugResponse);
-        } catch (debugError) {
-          console.error('Failed to fetch debug info:', debugError);
-        }
-        
-        throw new Error(`Function invocation failed: ${error.message}`);
-      }
+      if (error) throw error;
 
-      if (!data) {
-        throw new Error('No response received from fetch-schedule function');
-      }
+      toast({
+        title: "Schedule Fetched",
+        description: `Found ${data?.gamesProcessed || 0} games for ${selectedDate}`,
+      });
 
-      console.log('Schedule fetch response:', data);
-
-      if (data.success) {
-        toast({
-          title: "Schedule Updated Successfully",
-          description: `Fetched ${data.gamesProcessed} games for ${selectedDate}. Verification: ${data.verification?.success ? 'Passed' : 'Failed'}`,
-          variant: data.verification?.success ? "default" : "destructive"
-        });
-
-        setTimeout(() => {
-          refetch();
-          refetchDebug();
-        }, 1000);
-      } else {
-        throw new Error(data.error || 'Schedule fetch failed');
-      }
+      refetchGames();
     } catch (error) {
-      console.error('Error fetching schedule:', error);
-      
-      try {
-        const { data: debugResponse } = await supabase.functions.invoke('fetch-schedule/debug-schedule');
-        console.log('Debug response after error:', debugResponse);
-      } catch (debugError) {
-        console.error('Failed to fetch debug info:', debugError);
-      }
-      
+      console.error('Schedule fetch error:', error);
       toast({
         title: "Schedule Fetch Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
+        description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive"
       });
     } finally {
-      setIsFetching(false);
+      setIsLoading(false);
     }
   };
 
-  const handleIngestTeamStats = async () => {
+  const handleFetchLineups = async () => {
+    setIsLoading(true);
     try {
-      toast({
-        title: "Ingesting Team Statistics",
-        description: "Fetching current season team stats from MLB API..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-team-stats');
-      if (error) throw error;
-
-      toast({
-        title: "Team Stats Ingested Successfully",
-        description: "Current season team statistics have been updated"
-      });
-    } catch (error) {
-      console.error('Error ingesting team stats:', error);
-      toast({
-        title: "Team Stats Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleIngestParkFactors = async () => {
-    try {
-      toast({
-        title: "Ingesting Park Factors",
-        description: "Updating ballpark factors for all venues..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-park-factors');
-      if (error) throw error;
-
-      toast({
-        title: "Park Factors Ingested Successfully",
-        description: "Ballpark factors have been updated for all venues"
-      });
-    } catch (error) {
-      console.error('Error ingesting park factors:', error);
-      toast({
-        title: "Park Factors Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleIngestWeatherData = async () => {
-    try {
-      toast({
-        title: "Ingesting Weather Data",
-        description: "Fetching weather forecasts for upcoming games..."
-      });
-
-      const { error } = await supabase.functions.invoke('ingest-weather-data');
-      if (error) throw error;
-
-      toast({
-        title: "Weather Data Ingested Successfully",
-        description: "Weather forecasts have been updated for upcoming games"
-      });
-    } catch (error) {
-      console.error('Error ingesting weather data:', error);
-      toast({
-        title: "Weather Data Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleIngestLineups = async () => {
-    try {
-      toast({
-        title: "Ingesting Lineups",
-        description: "Fetching lineups from MLB API and backup sources..."
-      });
-
-      const { data, error } = await supabase.functions.invoke('ingest-lineups');
-      if (error) throw error;
-
-      toast({
-        title: "Lineups Ingested Successfully",
-        description: `Processed ${data?.processed || 0} lineup entries with ${data?.official_lineups || 0} official lineups`
-      });
-    } catch (error) {
-      console.error('Error ingesting lineups:', error);
-      toast({
-        title: "Lineup Ingestion Failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleShowDebugLogs = () => {
-    if (debugData?.lastJob) {
-      console.log('=== SCHEDULE DEBUG INFO ===');
-      console.log('Last Job Details:', debugData.lastJob);
-      console.log('Summary:', debugData.summary);
-      console.log('=== END DEBUG INFO ===');
+      console.log('Fetching lineups for:', selectedDate);
       
-      toast({
-        title: "Debug Information",
-        description: `Last job: ${debugData.lastJob.status}. Check console for details.`
+      const { data, error } = await supabase.functions.invoke('ingest-lineups', {
+        body: { date: selectedDate, force: true }
       });
-    } else {
+      
+      if (error) throw error;
+
       toast({
-        title: "No Debug Data",
-        description: "No recent ingestion jobs found."
+        title: "Lineups Fetched",
+        description: `Processed ${data?.games_processed || 0} games`,
       });
+
+      if (testGameId) {
+        refetchLineups();
+      }
+    } catch (error) {
+      console.error('Lineup fetch error:', error);
+      toast({
+        title: "Lineup Fetch Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const formatDisplayDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split('-').map(Number);
-    const date = new Date(year, month - 1, day);
-    return date.toLocaleDateString('en-US', { 
-      weekday: 'short',
-      month: 'short', 
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
+  const testGame = games?.find(g => g.game_id === testGameId);
 
   return (
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-foreground mb-2 flex items-center gap-3">
             <Settings className="h-8 w-8" />
-            Admin Panel
+            Admin Panel - Simplified
           </h1>
           <p className="text-xl text-muted-foreground">
-            Data management, debugging, and system administration
+            Test MLB data ingestion and verify game information
           </p>
         </div>
 
-        {/* Data Quality Dashboard */}
-        <div className="mb-6">
-          <DataQualityDashboard />
-        </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* System Status */}
+          {/* Data Control */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                System Status
+                <Database className="h-5 w-5" />
+                Data Management
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <label htmlFor="date" className="block text-sm font-medium mb-2">
+                <label className="block text-sm font-medium mb-2">
                   Target Date
                 </label>
                 <input
-                  id="date"
                   type="date"
                   value={selectedDate}
                   onChange={(e) => setSelectedDate(e.target.value)}
                   className="px-3 py-2 border rounded-md w-full"
                 />
-                <p className="text-sm text-muted-foreground mt-1">
-                  {formatDisplayDate(selectedDate)}
-                </p>
               </div>
 
-              <div className="flex gap-2 text-xs">
-                {debugData && (
-                  <div className={`flex items-center gap-1 px-2 py-1 rounded ${
-                    isLastRunSuccessful ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                  }`}>
-                    {isLastRunSuccessful ? (
-                      <CheckCircle className="h-3 w-3" />
-                    ) : (
-                      <XCircle className="h-3 w-3" />
-                    )}
-                    Last Run: {isLastRunSuccessful ? 'Success' : debugData.lastJob?.status || 'Failed'}
-                  </div>
-                )}
-                {verificationData && (
-                  <div className={`flex items-center gap-1 px-2 py-1 rounded ${
-                    verificationData.success ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {verificationData.success ? (
-                      <CheckCircle className="h-3 w-3" />
-                    ) : (
-                      <AlertTriangle className="h-3 w-3" />
-                    )}
-                    DB: {verificationData.gameCount} games
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-2 flex-wrap">
+              <div className="space-y-2">
                 <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => refetch()}
+                  onClick={handleFetchSchedule}
+                  disabled={isLoading}
+                  className="w-full"
+                  variant="default"
                 >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh Status
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Fetching...
+                    </>
+                  ) : (
+                    <>
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Fetch MLB Schedule
+                    </>
+                  )}
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleShowDebugLogs}>
-                  <Bug className="h-4 w-4 mr-2" />
-                  Debug Logs
+                
+                <Button
+                  onClick={handleFetchLineups}
+                  disabled={isLoading || !games?.length}
+                  className="w-full"
+                  variant="secondary"
+                >
+                  <Users className="h-4 w-4 mr-2" />
+                  Fetch Lineups
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          {/* Data Ingestion */}
+          {/* Game Testing */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Data Ingestion
+                <Activity className="h-5 w-5" />
+                Game Testing
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-2">
-                <Button
-                  variant="secondary"
-                  onClick={handleFetchSchedule}
-                  disabled={isFetching}
-                  className="justify-start"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  {isFetching ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleIngestTeamStats}
-                  className="justify-start"
-                >
-                  <Database className="h-4 w-4 mr-2" />
-                  Ingest Team Stats
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleIngestParkFactors}
-                  className="justify-start"
-                >
-                  <Database className="h-4 w-4 mr-2" />
-                  Ingest Park Factors
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleIngestWeatherData}
-                  className="justify-start"
-                >
-                  <Database className="h-4 w-4 mr-2" />
-                  Ingest Weather Data
-                </Button>
-                
-                <Button
-                  variant="outline"
-                  onClick={handleIngestLineups}
-                  className="justify-start"
-                >
-                  <Database className="h-4 w-4 mr-2" />
-                  Ingest Lineups
-                </Button>
-              </div>
+              {games && games.length > 0 ? (
+                <>
+                  <div>
+                    <p className="text-sm font-medium mb-2">
+                      Found {games.length} games for {selectedDate}
+                    </p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {games.map((game) => (
+                        <div
+                          key={game.game_id}
+                          className={`p-2 border rounded cursor-pointer transition-colors ${
+                            testGameId === game.game_id 
+                              ? 'border-primary bg-primary/5' 
+                              : 'hover:bg-muted/50'
+                          }`}
+                          onClick={() => setTestGameId(game.game_id)}
+                        >
+                          <div className="text-sm font-medium">
+                            {game.away_team?.abbreviation} @ {game.home_team?.abbreviation}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            Game ID: {game.game_id} | {game.status}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No games found for {selectedDate}</p>
+                  <p className="text-sm">Click "Fetch MLB Schedule" to load games</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* Player Statistics */}
-          <PlayerStatsBackfillCard />
+          {/* Test Results */}
+          {testGame && (
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle>
+                  Testing: {testGame.away_team?.name} @ {testGame.home_team?.name}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                  <div className="p-3 bg-muted rounded">
+                    <div className="text-sm text-muted-foreground">Game ID</div>
+                    <div className="font-medium">{testGame.game_id}</div>
+                  </div>
+                  <div className="p-3 bg-muted rounded">
+                    <div className="text-sm text-muted-foreground">Status</div>
+                    <div className="font-medium capitalize">{testGame.status}</div>
+                  </div>
+                  <div className="p-3 bg-muted rounded">
+                    <div className="text-sm text-muted-foreground">Venue</div>
+                    <div className="font-medium">{testGame.venue_name || 'N/A'}</div>
+                  </div>
+                </div>
 
-          {/* Lineup System */}
-          <LineupOrchestratorCard />
-          <LineupMonitorCard />
-          <AutoLineupScheduler />
+                {/* Lineup Test Results */}
+                <div className="border rounded p-4">
+                  <h4 className="font-medium mb-3">Lineup Data Test</h4>
+                  {testLineups && testLineups.length > 0 ? (
+                    <div className="space-y-3">
+                      <div className="text-sm text-green-600 font-medium">
+                        ✅ Found {testLineups.length} lineup entries
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Away Team Lineups */}
+                        <div>
+                          <div className="font-medium text-sm mb-2">
+                            {testGame.away_team?.name} ({testGame.away_team?.abbreviation})
+                          </div>
+                          {testLineups
+                            .filter(l => l.team_id === testGame.away_team_id)
+                            .map(lineup => (
+                              <div key={lineup.id} className="text-xs p-2 bg-muted/50 rounded mb-1">
+                                <span className="font-medium">{lineup.player_name}</span>
+                                <span className="text-muted-foreground ml-2">
+                                  {lineup.position} • {lineup.lineup_type}
+                                  {lineup.batting_order && ` • #${lineup.batting_order}`}
+                                </span>
+                              </div>
+                            ))
+                          }
+                        </div>
 
-          {/* ML Pipeline */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                🤖 Advanced ML Prediction Engine
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => supabase.functions.invoke('data-audit-engine', { body: { enable_mock_fallback: true } })}
-                  className="justify-start"
-                >
-                  🔍 Data Audit
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => supabase.functions.invoke('feature-engineering', { body: { target_date: selectedDate } })}
-                  className="justify-start"
-                >
-                  🔧 Feature Engineering
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => supabase.functions.invoke('ml-prediction-engine', { body: { game_ids: games?.map(g => g.game_id) } })}
-                  className="justify-start"
-                >
-                  🧠 ML Predictions
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => supabase.functions.invoke('model-validation', { body: { validation_type: 'all' } })}
-                  className="justify-start"
-                >
-                  📊 Model Health
-                </Button>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Advanced ML pipeline with XGBoost + Monte Carlo, comprehensive validation, and real-time monitoring
-              </p>
-            </CardContent>
-          </Card>
+                        {/* Home Team Lineups */}
+                        <div>
+                          <div className="font-medium text-sm mb-2">
+                            {testGame.home_team?.name} ({testGame.home_team?.abbreviation})
+                          </div>
+                          {testLineups
+                            .filter(l => l.team_id === testGame.home_team_id)
+                            .map(lineup => (
+                              <div key={lineup.id} className="text-xs p-2 bg-muted/50 rounded mb-1">
+                                <span className="font-medium">{lineup.player_name}</span>
+                                <span className="text-muted-foreground ml-2">
+                                  {lineup.position} • {lineup.lineup_type}
+                                  {lineup.batting_order && ` • #${lineup.batting_order}`}
+                                </span>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-orange-600">
+                      ⚠️ No lineup data found for this game. Click "Fetch Lineups" to try loading data.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>
