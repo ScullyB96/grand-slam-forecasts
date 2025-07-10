@@ -36,9 +36,35 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
         <Users className="h-16 w-16 mx-auto mb-4 opacity-50" />
         <h3 className="text-lg font-semibold mb-2">No Lineup Data Available</h3>
         <p>Official lineups haven't been released yet for this game.</p>
+        <p className="text-sm mt-2">We automatically check for official lineups every 15 minutes.</p>
       </div>
     );
   }
+
+  // Check if lineups are official or projected
+  const hasOfficialLineups = lineups.some(lineup => 
+    !lineup.player_name.includes('Player (') && 
+    !lineup.player_name.includes('Mock') &&
+    !lineup.player_name.includes('Starting Pitcher (')
+  );
+
+  const LineupStatus = () => (
+    <div className="mb-4 p-3 rounded-lg bg-muted/50 border">
+      <div className="flex items-center gap-2 text-sm">
+        {hasOfficialLineups ? (
+          <>
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span className="text-green-700 dark:text-green-400 font-medium">Official Lineups Confirmed</span>
+          </>
+        ) : (
+          <>
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+            <span className="text-yellow-700 dark:text-yellow-400 font-medium">Projected Lineups (Auto-updating every 15 minutes)</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
 
   // Group lineups by team and type
   const groupedLineups = lineups.reduce((acc, lineup) => {
@@ -98,7 +124,9 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="space-y-6">
+      <LineupStatus />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Away Team */}
       {groupedLineups.away && (
         <Card>
@@ -144,6 +172,7 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   );
 };

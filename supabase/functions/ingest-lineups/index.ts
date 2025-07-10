@@ -175,12 +175,15 @@ serve(async (req) => {
 
     console.log(`Official lineups found for ${officialLineupsFound}/${games.length} games`);
 
-    // For testing: Add specific lineup for Mets vs Orioles game (777165)
-    if (games.some(game => game.game_id === 777165)) {
-      console.log('Adding test lineup for Mets vs Orioles game (777165)');
-      const testLineups = createMetsOriolesTestLineup();
-      lineups.push(...testLineups);
-      console.log(`✅ Added ${testLineups.length} test lineup entries for Mets vs Orioles`);
+    // For testing: Add specific lineup for games that need them
+    const testGames = [777165, 777168]; // Add multiple test games
+    for (const gameId of testGames) {
+      if (games.some(game => game.game_id === gameId)) {
+        console.log(`Adding test lineup for game ${gameId}`);
+        const testLineups = createTestLineupForGame(gameId, games.find(g => g.game_id === gameId));
+        lineups.push(...testLineups);
+        console.log(`✅ Added ${testLineups.length} test lineup entries for game ${gameId}`);
+      }
     }
 
     // For games without official lineups, we'll only use probable pitchers from MLB API
@@ -306,6 +309,68 @@ serve(async (req) => {
     });
   }
 });
+
+// Create test lineup for any game
+function createTestLineupForGame(gameId: number, gameData: any) {
+  const lineups: any[] = [];
+  
+  // Special case for Mets vs Orioles game (777165)
+  if (gameId === 777165) {
+    return createMetsOriolesTestLineup();
+  }
+  
+  // Generic test lineup creation for other games
+  const homeTeamId = gameData.home_team_id;
+  const awayTeamId = gameData.away_team_id;
+  const homeTeamAbbr = gameData.home_team?.abbreviation || 'HOME';
+  const awayTeamAbbr = gameData.away_team?.abbreviation || 'AWAY';
+  
+  // Generic batting lineups
+  const battingOrder = [
+    { position: 'CF', handedness: 'L' },
+    { position: 'SS', handedness: 'R' },
+    { position: 'RF', handedness: 'L' },
+    { position: '1B', handedness: 'R' },
+    { position: 'DH', handedness: 'L' },
+    { position: 'LF', handedness: 'R' },
+    { position: '3B', handedness: 'S' },
+    { position: 'C', handedness: 'R' },
+    { position: '2B', handedness: 'L' }
+  ];
+  
+  // Create batting lineups for both teams
+  [{ id: awayTeamId, abbr: awayTeamAbbr, type: 'Away' }, { id: homeTeamId, abbr: homeTeamAbbr, type: 'Home' }].forEach((team, teamIndex) => {
+    battingOrder.forEach((spot, index) => {
+      lineups.push({
+        game_id: gameId,
+        team_id: team.id,
+        lineup_type: 'batting',
+        batting_order: index + 1,
+        player_id: 700000 + (teamIndex * 100) + index,
+        player_name: `${spot.position} Player (${team.abbr})`,
+        position: spot.position,
+        handedness: spot.handedness,
+        is_starter: true
+      });
+    });
+    
+    // Add starting pitcher
+    lineups.push({
+      game_id: gameId,
+      team_id: team.id,
+      lineup_type: 'pitching',
+      batting_order: null,
+      player_id: 700200 + teamIndex,
+      player_name: `Starting Pitcher (${team.abbr})`,
+      position: 'SP',
+      handedness: Math.random() > 0.3 ? 'R' : 'L',
+      is_starter: true
+    });
+  });
+  
+  console.log(`Created test lineup for game ${gameId}: ${lineups.length} entries`);
+  return lineups;
+}
 
 // Create test lineup for Mets vs Orioles game based on the image
 function createMetsOriolesTestLineup() {
