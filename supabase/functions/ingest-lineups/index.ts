@@ -252,7 +252,12 @@ async function fetchFromRotowire(games: any[]) {
     
     const response = await fetch(rotowireUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
       }
     });
     
@@ -261,7 +266,7 @@ async function fetchFromRotowire(games: any[]) {
     }
     
     const html = await response.text();
-    console.log('Successfully fetched Rotowire HTML');
+    console.log('Successfully fetched Rotowire HTML, length:', html.length);
     
     return parseRotowireLineups(html, games);
   } catch (error) {
@@ -360,71 +365,229 @@ function parseRotowireLineups(html: string, games: any[]) {
   const lineups: any[] = [];
   
   try {
-    // Create a simple parser for the HTML content
-    // This is a basic implementation - in production you'd want more robust parsing
+    console.log('Parsing Rotowire HTML for lineup data...');
     
-    // Look for lineup containers in the HTML
-    const gameRegex = /<div[^>]*class="[^"]*lineup[^"]*"[^>]*>(.*?)<\/div>/gs;
-    const playerRegex = /<div[^>]*class="[^"]*player[^"]*"[^>]*>.*?<span[^>]*>([^<]+)<\/span>/gs;
-    
-    let gameMatch;
-    while ((gameMatch = gameRegex.exec(html)) !== null) {
-      const gameHtml = gameMatch[1];
-      
-      // Extract team abbreviations and player names
-      const teamRegex = /<span[^>]*class="[^"]*team[^"]*"[^>]*>([A-Z]{2,3})<\/span>/g;
-      const teams = [];
-      let teamMatch;
-      while ((teamMatch = teamRegex.exec(gameHtml)) !== null) {
-        teams.push(teamMatch[1]);
+    // Look for different possible lineup structures on Rotowire
+    const possibleSelectors = [
+      // Standard lineup containers
+      /<div[^>]*class="[^"]*lineup[^"]*"[^>]*>(.*?)<\/div>/gs,
+      // Alternative lineup structures
+      /<div[^>]*class="[^"]*daily[^"]*lineup[^"]*"[^>]*>(.*?)<\/div>/gs,
+      /<div[^>]*class="[^"]*matchup[^"]*"[^>]*>(.*?)<\/div>/gs,
+      /<article[^>]*class="[^"]*lineup[^"]*"[^>]*>(.*?)<\/article>/gs
+    ];
+
+    // Try to extract game containers using multiple patterns
+    const gameContainers: string[] = [];
+    for (const regex of possibleSelectors) {
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        gameContainers.push(match[1]);
       }
+    }
+
+    console.log(`Found ${gameContainers.length} potential game containers`);
+
+    for (const gameHtml of gameContainers) {
+      const gameData = extractGameDataFromContainer(gameHtml, games);
+      if (gameData && gameData.length > 0) {
+        lineups.push(...gameData);
+      }
+    }
+
+    // Alternative: Look for team abbreviations directly in the HTML
+    if (lineups.length === 0) {
+      console.log('Trying alternative parsing strategy...');
       
-      // Find matching game in our database
-      const matchingGame = games.find(game => 
-        teams.includes(game.home_team.abbreviation) && 
-        teams.includes(game.away_team.abbreviation)
-      );
+      // Extract team names and matchups
+      const teamRegex = /([A-Z]{2,3})\s*(?:@|vs\.?|at)\s*([A-Z]{2,3})/gi;
+      const teamMatches = html.match(teamRegex);
       
-      if (matchingGame) {
-        // Extract players for this game
-        let playerMatch;
-        let battingOrder = 1;
+      if (teamMatches) {
+        console.log(`Found ${teamMatches.length} team matchups`);
         
-        while ((playerMatch = playerRegex.exec(gameHtml)) !== null) {
-          const playerName = playerMatch[1].trim();
+        for (const match of teamMatches) {
+          const [awayTeam, homeTeam] = match.split(/\s*(?:@|vs\.?|at)\s*/i);
           
-          // Determine which team this player belongs to
-          // This is simplified - you'd need more sophisticated parsing
-          const teamId = battingOrder <= 9 ? matchingGame.away_team_id : matchingGame.home_team_id;
-          const teamAbbr = battingOrder <= 9 ? matchingGame.away_team.abbreviation : matchingGame.home_team.abbreviation;
+          const matchingGame = games.find(game => 
+            game.away_team.abbreviation?.toUpperCase() === awayTeam?.toUpperCase() &&
+            game.home_team.abbreviation?.toUpperCase() === homeTeam?.toUpperCase()
+          );
           
-          lineups.push({
-            game_id: matchingGame.game_id,
-            team_id: teamId,
-            lineup_type: 'batting',
-            batting_order: (battingOrder - 1) % 9 + 1,
-            player_id: 0, // Will need to lookup or create
-            player_name: playerName,
-            position: getPositionFromOrder((battingOrder - 1) % 9 + 1),
-            handedness: 'R', // Default, would need to lookup
-            is_starter: true
-          });
-          
-          battingOrder++;
+          if (matchingGame) {
+            console.log(`Found matching game: ${awayTeam} @ ${homeTeam}`);
+            
+            // Look for player names near this matchup
+            const gameSection = extractGameSection(html, match);
+            const playersData = extractPlayersFromSection(gameSection, matchingGame);
+            lineups.push(...playersData);
+          }
+        }
+      }
+    }
+
+    // Last resort: Try to find any player data structures
+    if (lineups.length === 0) {
+      console.log('Trying final fallback parsing...');
+      
+      // Look for common player data patterns
+      const playerPatterns = [
+        /<tr[^>]*>.*?<td[^>]*>([^<]+)<\/td>.*?<td[^>]*>([A-Z]+)<\/td>/gi,
+        /<div[^>]*class="[^"]*player[^"]*"[^>]*>.*?([A-Z][a-z]+\s+[A-Z][a-z]+).*?<\/div>/gi,
+        /<span[^>]*class="[^"]*name[^"]*"[^>]*>([^<]+)<\/span>/gi
+      ];
+
+      for (const pattern of playerPatterns) {
+        let match;
+        while ((match = pattern.exec(html)) !== null) {
+          console.log('Found potential player:', match[1]);
         }
       }
     }
     
   } catch (parseError) {
     console.error('Error parsing Rotowire HTML:', parseError);
-    // For now, return mock data for testing
+  }
+  
+  // If still no lineups found, create mock data as fallback
+  if (lineups.length === 0) {
+    console.log('No valid lineups parsed from Rotowire, creating mock data...');
     return createMockLineups(games);
   }
   
-  // If parsing failed or no lineups found, create mock data
-  if (lineups.length === 0) {
-    console.log('No lineups parsed, creating mock data for testing...');
-    return createMockLineups(games);
+  console.log(`Successfully parsed ${lineups.length} lineup entries from Rotowire`);
+  return lineups;
+}
+
+function extractGameDataFromContainer(gameHtml: string, games: any[]): any[] {
+  const lineups: any[] = [];
+  
+  try {
+    // Look for team abbreviations in this container
+    const teamRegex = /\b([A-Z]{2,3})\b/g;
+    const foundTeams: string[] = [];
+    let teamMatch;
+    
+    while ((teamMatch = teamRegex.exec(gameHtml)) !== null) {
+      const team = teamMatch[1];
+      if (team.length >= 2 && team.length <= 3 && !foundTeams.includes(team)) {
+        foundTeams.push(team);
+      }
+    }
+    
+    // Try to find a matching game
+    let matchingGame = null;
+    for (const game of games) {
+      if (foundTeams.includes(game.home_team.abbreviation) && 
+          foundTeams.includes(game.away_team.abbreviation)) {
+        matchingGame = game;
+        break;
+      }
+    }
+    
+    if (!matchingGame) return lineups;
+    
+    // Extract player information from this container
+    const playerPatterns = [
+      // Name and position patterns
+      /<td[^>]*>([A-Z][a-z]+\s+[A-Z][a-z]+)<\/td>\s*<td[^>]*>([A-Z]+)<\/td>/gi,
+      /<div[^>]*>([A-Z][a-z]+\s+[A-Z][a-z]+)[^<]*<[^>]*>([A-Z]+)</gi,
+      /<span[^>]*>([A-Z][a-z]+\s+[A-Z][a-z]+)<\/span>/gi
+    ];
+    
+    let playerCount = 0;
+    for (const pattern of playerPatterns) {
+      let playerMatch;
+      while ((playerMatch = pattern.exec(gameHtml)) !== null && playerCount < 18) {
+        const playerName = playerMatch[1]?.trim();
+        const position = playerMatch[2]?.trim() || getPositionFromOrder((playerCount % 9) + 1);
+        
+        if (playerName && playerName.length > 3) {
+          const isHomeTeam = playerCount >= 9;
+          const teamId = isHomeTeam ? matchingGame.home_team_id : matchingGame.away_team_id;
+          const battingOrder = (playerCount % 9) + 1;
+          
+          lineups.push({
+            game_id: matchingGame.game_id,
+            team_id: teamId,
+            lineup_type: 'batting',
+            batting_order: battingOrder,
+            player_id: 0,
+            player_name: playerName,
+            position: position,
+            handedness: 'R', // Default
+            is_starter: true
+          });
+          
+          playerCount++;
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error extracting game data from container:', error);
+  }
+  
+  return lineups;
+}
+
+function extractGameSection(html: string, matchup: string): string {
+  // Try to find a section of HTML around the matchup
+  const matchupIndex = html.indexOf(matchup);
+  if (matchupIndex === -1) return html;
+  
+  // Extract a reasonable section around the matchup
+  const start = Math.max(0, matchupIndex - 2000);
+  const end = Math.min(html.length, matchupIndex + 2000);
+  
+  return html.substring(start, end);
+}
+
+function extractPlayersFromSection(section: string, game: any): any[] {
+  const lineups: any[] = [];
+  
+  try {
+    // Look for player names in various formats
+    const namePatterns = [
+      /\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/g,
+      />\s*([A-Z][a-z]+\s+[A-Z][a-z]+)\s*</g
+    ];
+    
+    const foundPlayers = new Set<string>();
+    
+    for (const pattern of namePatterns) {
+      let match;
+      while ((match = pattern.exec(section)) !== null) {
+        const fullName = match[1] || `${match[1]} ${match[2]}`;
+        if (fullName && fullName.length > 5 && !foundPlayers.has(fullName)) {
+          foundPlayers.add(fullName);
+        }
+      }
+    }
+    
+    // Convert found players to lineup entries
+    const playerArray = Array.from(foundPlayers).slice(0, 18); // Max 18 players (9 per team)
+    
+    playerArray.forEach((playerName, index) => {
+      const isHomeTeam = index >= 9;
+      const teamId = isHomeTeam ? game.home_team_id : game.away_team_id;
+      const battingOrder = (index % 9) + 1;
+      
+      lineups.push({
+        game_id: game.game_id,
+        team_id: teamId,
+        lineup_type: 'batting',
+        batting_order: battingOrder,
+        player_id: 0,
+        player_name: playerName,
+        position: getPositionFromOrder(battingOrder),
+        handedness: 'R',
+        is_starter: true
+      });
+    });
+    
+  } catch (error) {
+    console.error('Error extracting players from section:', error);
   }
   
   return lineups;
