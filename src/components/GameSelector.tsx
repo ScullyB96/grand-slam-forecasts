@@ -1,9 +1,9 @@
-
 import React, { useState } from 'react';
 import { useGames, useFetchSchedule } from '@/hooks/useGames';
+import { useScheduleDebug, useVerifyIngestion } from '@/hooks/useScheduleDebug';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Download } from 'lucide-react';
+import { Calendar, RefreshCw, Download, Bug, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,40 +37,72 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   selectedGameId
 }) => {
   const { data: games, isLoading, error, refetch } = useGames(selectedDate);
-  const { refetch: triggerFetch, isFetching: isFetching } = useFetchSchedule();
+  const { mutate: triggerFetch, isPending: isFetching } = useFetchSchedule();
+  const { data: debugData, refetch: refetchDebug } = useScheduleDebug();
+  const { data: verificationData } = useVerifyIngestion(selectedDate);
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
+
+  // Check if last run was successful based on debug logs
+  const isLastRunSuccessful = debugData?.summary?.errorCount === 0 && 
+                              debugData?.logs?.some(log => 
+                                log.message.includes('Ingestion completed') && 
+                                log.level === 'info'
+                              );
 
   const handleFetchSchedule = async () => {
     try {
       console.log('Triggering schedule fetch...');
-      const result = await triggerFetch();
       
-      if (result.data?.success) {
+      const { data, error } = await supabase.functions.invoke('fetch-schedule', {
+        body: { date: selectedDate }
+      });
+      
+      if (error) {
+        console.error('Supabase function invoke error:', error);
+        throw new Error(`Function invocation failed: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error('No response received from fetch-schedule function');
+      }
+
+      console.log('Schedule fetch response:', data);
+
+      if (data.success) {
         toast({
-          title: "Schedule Updated",
-          description: `Fetched ${result.data.gamesProcessed} games for ${selectedDate}`
+          title: "Schedule Updated Successfully",
+          description: `Fetched ${data.gamesProcessed} games for ${selectedDate}. Verification: ${data.verification?.success ? 'Passed' : 'Failed'}`,
+          variant: data.verification?.success ? "default" : "destructive"
         });
-        
-        // Refresh games after fetch
+
+        // Refresh both games and debug data
         setTimeout(() => {
           refetch();
+          refetchDebug();
         }, 1000);
       } else {
-        throw new Error(result.data?.error || 'Fetch failed');
+        throw new Error(data.error || 'Schedule fetch failed');
       }
     } catch (error) {
       console.error('Error fetching schedule:', error);
       toast({
-        title: "Fetch Failed",
-        description: "Failed to fetch schedule from MLB API. Please try again.",
+        title: "Schedule Fetch Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive"
       });
     }
   };
 
   const handleGeneratePredictions = async () => {
-    if (!games || games.length === 0) return;
+    if (!games || games.length === 0) {
+      toast({
+        title: "No Games Available",
+        description: "Please fetch the schedule first before generating predictions",
+        variant: "destructive"
+      });
+      return;
+    }
 
     setGeneratingPredictions(true);
     try {
@@ -95,12 +127,27 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     } catch (error) {
       console.error('Error generating predictions:', error);
       toast({
-        title: "Error",
-        description: "Failed to generate predictions. Please try again.",
+        title: "Prediction Generation Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
         variant: "destructive"
       });
     } finally {
       setGeneratingPredictions(false);
+    }
+  };
+
+  const handleShowDebugLogs = () => {
+    if (debugData?.logs) {
+      console.log('=== SCHEDULE DEBUG LOGS ===');
+      debugData.logs.forEach(log => {
+        console.log(`[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`, log.data || '');
+      });
+      console.log('=== END DEBUG LOGS ===');
+      
+      toast({
+        title: "Debug Logs",
+        description: `${debugData.logs.length} logs printed to console. Check developer tools.`
+      });
     }
   };
 
@@ -146,14 +193,22 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <p className="text-sm text-muted-foreground mb-4">
             Failed to load games: {error.message}
           </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
             </Button>
-            <Button variant="outline" onClick={handleFetchSchedule} disabled={isFetching}>
+            <Button 
+              variant="outline" 
+              onClick={handleFetchSchedule} 
+              disabled={isFetching}
+            >
               <Download className="h-4 w-4 mr-2" />
               {isFetching ? 'Fetching...' : 'Fetch Schedule'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleShowDebugLogs}>
+              <Bug className="h-4 w-4 mr-2" />
+              Debug Logs
             </Button>
           </div>
         </CardContent>
@@ -188,7 +243,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <Calendar className="h-5 w-5" />
           Games for {formatDisplayDate(selectedDate)}
         </CardTitle>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -206,11 +261,15 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             <Download className="h-4 w-4 mr-2" />
             {isFetching ? 'Fetching...' : 'Fetch Schedule'}
           </Button>
+          <Button variant="outline" size="sm" onClick={handleShowDebugLogs}>
+            <Bug className="h-4 w-4 mr-2" />
+            Debug
+          </Button>
           <Button
             variant="default"
             size="sm"
             onClick={handleGeneratePredictions}
-            disabled={generatingPredictions || !games?.length}
+            disabled={generatingPredictions || !games?.length || !isLastRunSuccessful}
           >
             {generatingPredictions ? (
               <>
@@ -223,7 +282,36 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      
+      {/* Status indicators */}
+      <CardContent className="pt-0">
+        <div className="flex gap-2 mb-4 text-xs">
+          {debugData && (
+            <div className={`flex items-center gap-1 px-2 py-1 rounded ${
+              isLastRunSuccessful ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+            }`}>
+              {isLastRunSuccessful ? (
+                <CheckCircle className="h-3 w-3" />
+              ) : (
+                <XCircle className="h-3 w-3" />
+              )}
+              Last Run: {isLastRunSuccessful ? 'Success' : 'Failed'}
+            </div>
+          )}
+          {verificationData && (
+            <div className={`flex items-center gap-1 px-2 py-1 rounded ${
+              verificationData.success ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+            }`}>
+              {verificationData.success ? (
+                <CheckCircle className="h-3 w-3" />
+              ) : (
+                <AlertTriangle className="h-3 w-3" />
+              )}
+              DB: {verificationData.gameCount} games
+            </div>
+          )}
+        </div>
+
         <div className="mb-4">
           <input
             type="date"

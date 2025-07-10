@@ -54,14 +54,15 @@ export const useGames = (date?: string) => {
 
       if (error) {
         console.error('Error fetching games:', error);
-        throw error;
+        throw new Error(`Failed to fetch games: ${error.message}`);
       }
 
       console.log(`Successfully fetched ${data?.length || 0} games`);
       return data as Game[];
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes (renamed from cacheTime)
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
   });
 };
 
@@ -70,25 +71,47 @@ export const useTodaysGames = () => {
   return useGames(today);
 };
 
-// Hook to trigger schedule fetch
-export const useFetchSchedule = () => {
+// Enhanced hook to trigger schedule fetch with better error handling
+export const useFetchSchedule = (date?: string) => {
   return useQuery({
-    queryKey: ['fetch-schedule'],
+    queryKey: ['fetch-schedule', date],
     queryFn: async () => {
-      console.log('Triggering schedule fetch...');
+      const targetDate = date || new Date().toISOString().split('T')[0];
+      console.log(`Triggering schedule fetch for date: ${targetDate}`);
       
-      const { data, error } = await supabase.functions.invoke('fetch-schedule', {
-        body: { date: new Date().toISOString().split('T')[0] }
-      });
+      try {
+        const { data, error } = await supabase.functions.invoke('fetch-schedule', {
+          body: { date: targetDate }
+        });
 
-      if (error) {
-        console.error('Error triggering schedule fetch:', error);
+        if (error) {
+          console.error('Error invoking fetch-schedule function:', error);
+          throw new Error(`Failed to invoke fetch-schedule: ${error.message}`);
+        }
+
+        if (!data) {
+          throw new Error('No response data from fetch-schedule function');
+        }
+
+        // Validate response structure
+        if (typeof data !== 'object') {
+          throw new Error('Invalid response format from fetch-schedule function');
+        }
+
+        console.log('Schedule fetch response:', data);
+
+        // Check if the response indicates success
+        if (data.success === false) {
+          throw new Error(data.error || 'Schedule fetch failed');
+        }
+
+        return data;
+      } catch (error) {
+        console.error('Schedule fetch failed:', error);
         throw error;
       }
-
-      console.log('Schedule fetch response:', data);
-      return data;
     },
     enabled: false, // Only run when manually triggered
+    retry: 1, // Only retry once for manual operations
   });
 };
