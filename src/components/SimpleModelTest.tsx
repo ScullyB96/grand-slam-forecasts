@@ -104,13 +104,19 @@ const SimpleModelTest: React.FC = () => {
               <div className="space-y-2">
                 <h3 className="text-lg font-semibold">Full Model Test</h3>
                 <p className="text-sm text-muted-foreground">
-                  Run complete test: ingest schedule, lineups, generate predictions, and analyze results
+                  Run complete test: ingest schedule, lineups, generate predictions, and analyze results for {testDate}
                 </p>
+                {!games || games.length === 0 ? (
+                  <p className="text-sm text-yellow-600 font-medium">
+                    ⚠️ No games found for {testDate}. Click "Run Full Test" to fetch and populate yesterday's schedule.
+                  </p>
+                ) : null}
               </div>
               <Button 
                 onClick={runFullModelTest}
                 disabled={testRunning}
                 className="flex items-center gap-2"
+                size="lg"
               >
                 {testRunning ? (
                   <>
