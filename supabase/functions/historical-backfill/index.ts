@@ -11,6 +11,7 @@ interface BackfillRequest {
   endDate: string;
   includeLineups?: boolean;
   includePredictions?: boolean;
+  includePlayerStats?: boolean;
   force?: boolean; // Force re-ingestion even if data exists
 }
 
@@ -28,9 +29,9 @@ serve(async (req) => {
 
   try {
     const requestBody: BackfillRequest = await req.json();
-    const { startDate, endDate, includeLineups = true, includePredictions = false, force = false } = requestBody;
+    const { startDate, endDate, includeLineups = true, includePredictions = false, includePlayerStats = false, force = false } = requestBody;
 
-    console.log('Backfill request:', { startDate, endDate, includeLineups, includePredictions, force });
+    console.log('Backfill request:', { startDate, endDate, includeLineups, includePredictions, includePlayerStats, force });
 
     // Validate date range
     const start = new Date(startDate);
@@ -79,6 +80,7 @@ serve(async (req) => {
       scheduleSuccess: 0,
       lineupSuccess: 0,
       predictionSuccess: 0,
+      playerStatsSuccess: 0,
       errors: [] as string[]
     };
 
@@ -138,6 +140,60 @@ serve(async (req) => {
           } else {
             results.errors.push(`Predictions ${dateStr}: ${predictionResult.error}`);
             console.log(`❌ Predictions failed: ${predictionResult.error}`);
+          }
+        }
+
+        // 4. Ingest player stats if requested (run once, not per date)
+        if (includePlayerStats && currentDate.getTime() === start.getTime()) {
+          console.log(`4. Ingesting player statistics for season ${start.getFullYear()}`);
+          
+          try {
+            // Ingest player rosters
+            console.log('4a. Ingesting player rosters...');
+            const rosterResult = await callEdgeFunction(
+              'ingest-player-rosters',
+              { season: start.getFullYear(), force }
+            );
+            
+            if (rosterResult.success) {
+              console.log(`✅ Player rosters ingested: ${rosterResult.playersInserted} new, ${rosterResult.playersUpdated} updated`);
+            } else {
+              results.errors.push(`Player rosters: ${rosterResult.error}`);
+              console.log(`❌ Player rosters failed: ${rosterResult.error}`);
+            }
+
+            // Ingest batting stats
+            console.log('4b. Ingesting batting statistics...');
+            const battingResult = await callEdgeFunction(
+              'ingest-player-batting-stats',
+              { season: start.getFullYear(), force }
+            );
+            
+            if (battingResult.success) {
+              console.log(`✅ Batting stats ingested: ${battingResult.statsInserted} new, ${battingResult.statsUpdated} updated`);
+            } else {
+              results.errors.push(`Batting stats: ${battingResult.error}`);
+              console.log(`❌ Batting stats failed: ${battingResult.error}`);
+            }
+
+            // Ingest pitching stats
+            console.log('4c. Ingesting pitching statistics...');
+            const pitchingResult = await callEdgeFunction(
+              'ingest-player-pitching-stats',
+              { season: start.getFullYear(), force }
+            );
+            
+            if (pitchingResult.success) {
+              console.log(`✅ Pitching stats ingested: ${pitchingResult.statsInserted} new, ${pitchingResult.statsUpdated} updated`);
+              results.playerStatsSuccess++;
+            } else {
+              results.errors.push(`Pitching stats: ${pitchingResult.error}`);
+              console.log(`❌ Pitching stats failed: ${pitchingResult.error}`);
+            }
+
+          } catch (error) {
+            console.error(`Error ingesting player stats:`, error);
+            results.errors.push(`Player stats: ${error.message}`);
           }
         }
 
