@@ -40,7 +40,7 @@ interface WeatherData {
   condition: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -51,20 +51,41 @@ serve(async (req) => {
   );
 
   try {
-    const { game_ids } = await req.json().catch(() => ({}));
+    console.log('Generate predictions function called');
+    const requestBody = await req.json().catch(() => ({}));
+    console.log('Request body:', requestBody);
+    
+    const { game_ids } = requestBody;
     
     // Log job start
+    console.log('Starting prediction generation job');
     const jobId = await logJobStart(supabase, 'generate-predictions', game_ids);
 
     // Get games to predict
+    console.log('Fetching games to predict...');
     const games = await getGamesToPredict(supabase, game_ids);
     console.log(`Processing ${games.length} games`);
+
+    if (games.length === 0) {
+      console.log('No games found to predict');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'No games found to predict',
+          processed: 0, 
+          errors: 0 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     let processedCount = 0;
     let errorCount = 0;
 
     for (const game of games) {
       try {
+        console.log(`Processing game ${game.game_id}`);
+        
         // Check if prediction already exists (idempotency)
         const existingPrediction = await checkExistingPrediction(supabase, game.game_id);
         if (existingPrediction && !shouldUpdatePrediction(existingPrediction)) {
@@ -73,6 +94,7 @@ serve(async (req) => {
         }
 
         // Gather all data needed for prediction
+        console.log(`Gathering data for game ${game.game_id}`);
         const [homeStats, awayStats, parkFactors, weather] = await Promise.all([
           getTeamStats(supabase, game.home_team_id),
           getTeamStats(supabase, game.away_team_id),
@@ -81,9 +103,11 @@ serve(async (req) => {
         ]);
 
         // Generate prediction using Monte Carlo simulation
+        console.log(`Generating prediction for game ${game.game_id}`);
         const prediction = await generatePrediction(game, homeStats, awayStats, parkFactors, weather);
 
         // Upsert prediction to database
+        console.log(`Saving prediction for game ${game.game_id}`);
         await upsertPrediction(supabase, prediction);
         
         processedCount++;
@@ -98,6 +122,8 @@ serve(async (req) => {
     // Log job completion
     await logJobCompletion(supabase, jobId, processedCount, errorCount);
 
+    console.log(`Prediction generation complete: ${processedCount} processed, ${errorCount} errors`);
+    
     return new Response(
       JSON.stringify({ 
         success: true, 
@@ -110,7 +136,12 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in generate-predictions function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        success: false,
+        error: error.message,
+        processed: 0,
+        errors: 1
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

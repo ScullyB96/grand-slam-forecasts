@@ -240,12 +240,20 @@ async function validateGameData(game: MLBGame): Promise<boolean> {
 async function processGames(supabase: any, games: MLBGame[]) {
   let processedCount = 0;
   const errors: string[] = [];
+  const processedGameIds = new Set<number>();
 
   console.log(`Starting to process ${games.length} games`);
 
   for (const [index, game] of games.entries()) {
     try {
       console.log(`Processing game ${index + 1}/${games.length}: ${game.gamePk}`);
+      
+      // Check for duplicate game IDs in this batch
+      if (processedGameIds.has(game.gamePk)) {
+        console.warn(`Skipping duplicate game ID: ${game.gamePk}`);
+        continue;
+      }
+      processedGameIds.add(game.gamePk);
       
       // Validate game structure
       if (!(await validateGameData(game))) {
@@ -338,7 +346,8 @@ async function processGames(supabase: any, games: MLBGame[]) {
   console.log(`Completed processing games`, { 
     total: games.length, 
     successful: processedCount, 
-    errors: errors.length 
+    errors: errors.length,
+    uniqueGamesProcessed: processedGameIds.size
   });
 
   return { processedCount, errors };
