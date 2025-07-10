@@ -148,7 +148,7 @@ serve(async (req) => {
   }
 });
 
-// Get lineup with detailed player stats
+// Get lineup with weighted stats from both 2024 and 2025
 async function getLineupWithStats(supabase: any, gameId: number, teamId: number): Promise<PlayerStats[]> {
   // Get lineup
   const { data: lineup } = await supabase
@@ -172,60 +172,198 @@ async function getLineupWithStats(supabase: any, gameId: number, teamId: number)
     };
 
     if (player.lineup_type === 'batting') {
-      // Get batting stats
-      const { data: battingStats } = await supabase
-        .from('batting_stats')
-        .select('*')
-        .eq('player_id', player.player_id)
-        .eq('season', 2025)
-        .maybeSingle();
-
-      if (battingStats) {
-        playerStats.avg = battingStats.avg || 0.250;
-        playerStats.obp = battingStats.obp || 0.320;
-        playerStats.slg = battingStats.slg || 0.400;
-        playerStats.ops = battingStats.ops || 0.720;
-        playerStats.home_runs = battingStats.home_runs || 0;
-        playerStats.rbi = battingStats.rbi || 0;
-        playerStats.strikeouts = battingStats.strikeouts || 0;
-        playerStats.walks = battingStats.walks || 0;
-      } else {
-        // Default stats for unknown players
-        playerStats.avg = 0.250;
-        playerStats.obp = 0.320;
-        playerStats.slg = 0.400;
-        playerStats.ops = 0.720;
-      }
+      const weightedStats = await getWeightedBattingStats(supabase, player.player_id);
+      Object.assign(playerStats, weightedStats);
     } else if (player.lineup_type === 'pitching') {
-      // Get pitching stats
-      const { data: pitchingStats } = await supabase
-        .from('pitching_stats')
-        .select('*')
-        .eq('player_id', player.player_id)
-        .eq('season', 2025)
-        .maybeSingle();
-
-      if (pitchingStats) {
-        playerStats.era = pitchingStats.era || 4.50;
-        playerStats.whip = pitchingStats.whip || 1.30;
-        playerStats.k_9 = pitchingStats.k_9 || 8.0;
-        playerStats.bb_9 = pitchingStats.bb_9 || 3.0;
-        playerStats.hr_9 = pitchingStats.hr_9 || 1.2;
-        playerStats.innings_pitched = pitchingStats.innings_pitched || 0;
-      } else {
-        // Default stats for unknown pitchers
-        playerStats.era = 4.50;
-        playerStats.whip = 1.30;
-        playerStats.k_9 = 8.0;
-        playerStats.bb_9 = 3.0;
-        playerStats.hr_9 = 1.2;
-      }
+      const weightedStats = await getWeightedPitchingStats(supabase, player.player_id);
+      Object.assign(playerStats, weightedStats);
     }
 
     lineupWithStats.push(playerStats);
   }
 
   return lineupWithStats;
+}
+
+// Calculate weighted batting statistics combining 2024 and 2025 data
+async function getWeightedBattingStats(supabase: any, playerId: number) {
+  // Get both 2024 and 2025 stats
+  const { data: stats2024 } = await supabase
+    .from('batting_stats')
+    .select('*')
+    .eq('player_id', playerId)
+    .eq('season', 2024)
+    .maybeSingle();
+
+  const { data: stats2025 } = await supabase
+    .from('batting_stats')
+    .select('*')
+    .eq('player_id', playerId)
+    .eq('season', 2025)
+    .maybeSingle();
+
+  // Default stats
+  const defaults = {
+    avg: 0.250,
+    obp: 0.320,
+    slg: 0.400,
+    ops: 0.720,
+    home_runs: 0,
+    rbi: 0,
+    strikeouts: 0,
+    walks: 0
+  };
+
+  if (!stats2024 && !stats2025) {
+    return defaults;
+  }
+
+  // Calculate weights based on sample size and data availability
+  const weight2024 = calculateBattingWeight2024(stats2024, stats2025);
+  const weight2025 = 1 - weight2024;
+
+  console.log(`Player ${playerId} batting weights: 2024: ${weight2024.toFixed(2)}, 2025: ${weight2025.toFixed(2)}`);
+
+  const weightedStats: any = {};
+  
+  // Weight each statistic
+  ['avg', 'obp', 'slg', 'ops'].forEach(stat => {
+    const val2024 = stats2024?.[stat] || defaults[stat as keyof typeof defaults];
+    const val2025 = stats2025?.[stat] || defaults[stat as keyof typeof defaults];
+    weightedStats[stat] = (val2024 * weight2024) + (val2025 * weight2025);
+  });
+
+  // For counting stats, use proportional scaling
+  ['home_runs', 'rbi', 'strikeouts', 'walks'].forEach(stat => {
+    const val2024 = stats2024?.[stat] || 0;
+    const val2025 = stats2025?.[stat] || 0;
+    const games2024 = stats2024?.games_played || 1;
+    const games2025 = stats2025?.games_played || 1;
+    
+    // Calculate per-game rates and weight them
+    const rate2024 = val2024 / games2024;
+    const rate2025 = val2025 / games2025;
+    const weightedRate = (rate2024 * weight2024) + (rate2025 * weight2025);
+    
+    // Project to full season (162 games)
+    weightedStats[stat] = Math.round(weightedRate * 162);
+  });
+
+  return weightedStats;
+}
+
+// Calculate weighted pitching statistics combining 2024 and 2025 data
+async function getWeightedPitchingStats(supabase: any, playerId: number) {
+  // Get both 2024 and 2025 stats
+  const { data: stats2024 } = await supabase
+    .from('pitching_stats')
+    .select('*')
+    .eq('player_id', playerId)
+    .eq('season', 2024)
+    .maybeSingle();
+
+  const { data: stats2025 } = await supabase
+    .from('pitching_stats')
+    .select('*')
+    .eq('player_id', playerId)
+    .eq('season', 2025)
+    .maybeSingle();
+
+  // Default stats
+  const defaults = {
+    era: 4.50,
+    whip: 1.30,
+    k_9: 8.0,
+    bb_9: 3.0,
+    hr_9: 1.2,
+    innings_pitched: 0
+  };
+
+  if (!stats2024 && !stats2025) {
+    return defaults;
+  }
+
+  // Calculate weights based on sample size and data availability
+  const weight2024 = calculatePitchingWeight2024(stats2024, stats2025);
+  const weight2025 = 1 - weight2024;
+
+  console.log(`Player ${playerId} pitching weights: 2024: ${weight2024.toFixed(2)}, 2025: ${weight2025.toFixed(2)}`);
+
+  const weightedStats: any = {};
+  
+  // Weight each statistic
+  ['era', 'whip', 'k_9', 'bb_9', 'hr_9'].forEach(stat => {
+    const val2024 = stats2024?.[stat] || defaults[stat as keyof typeof defaults];
+    const val2025 = stats2025?.[stat] || defaults[stat as keyof typeof defaults];
+    weightedStats[stat] = (val2024 * weight2024) + (val2025 * weight2025);
+  });
+
+  // For innings pitched, use the most recent available data
+  weightedStats.innings_pitched = stats2025?.innings_pitched || stats2024?.innings_pitched || 0;
+
+  return weightedStats;
+}
+
+// Calculate optimal weight for 2024 batting data
+function calculateBattingWeight2024(stats2024: any, stats2025: any): number {
+  let baseWeight = 0.65; // Start with 65% weight for 2024 data
+
+  // Adjust based on 2025 sample size
+  if (stats2025?.games_played) {
+    const games2025 = stats2025.games_played;
+    if (games2025 >= 50) {
+      baseWeight = 0.55; // More 2025 data available
+    } else if (games2025 >= 20) {
+      baseWeight = 0.60; // Moderate 2025 data
+    } else if (games2025 < 10) {
+      baseWeight = 0.75; // Very limited 2025 data
+    }
+  } else {
+    baseWeight = 0.80; // No 2025 data, rely heavily on 2024
+  }
+
+  // Adjust based on 2024 sample size quality
+  if (stats2024?.games_played) {
+    const games2024 = stats2024.games_played;
+    if (games2024 < 50) {
+      baseWeight = Math.max(0.45, baseWeight - 0.15); // Reduce reliance on limited 2024 data
+    } else if (games2024 >= 140) {
+      baseWeight = Math.min(0.75, baseWeight + 0.05); // Full season gives higher confidence
+    }
+  }
+
+  return Math.max(0.3, Math.min(0.8, baseWeight));
+}
+
+// Calculate optimal weight for 2024 pitching data
+function calculatePitchingWeight2024(stats2024: any, stats2025: any): number {
+  let baseWeight = 0.65; // Start with 65% weight for 2024 data
+
+  // Adjust based on 2025 innings pitched
+  if (stats2025?.innings_pitched) {
+    const innings2025 = stats2025.innings_pitched;
+    if (innings2025 >= 50) {
+      baseWeight = 0.55; // Significant 2025 innings
+    } else if (innings2025 >= 20) {
+      baseWeight = 0.60; // Moderate 2025 innings
+    } else if (innings2025 < 10) {
+      baseWeight = 0.75; // Very limited 2025 innings
+    }
+  } else {
+    baseWeight = 0.80; // No 2025 data, rely heavily on 2024
+  }
+
+  // Adjust based on 2024 innings quality
+  if (stats2024?.innings_pitched) {
+    const innings2024 = stats2024.innings_pitched;
+    if (innings2024 < 50) {
+      baseWeight = Math.max(0.45, baseWeight - 0.15); // Reduce reliance on limited 2024 data
+    } else if (innings2024 >= 150) {
+      baseWeight = Math.min(0.75, baseWeight + 0.05); // Full season gives higher confidence
+    }
+  }
+
+  return Math.max(0.3, Math.min(0.8, baseWeight));
 }
 
 // Get simulation factors (park, weather, etc.)
