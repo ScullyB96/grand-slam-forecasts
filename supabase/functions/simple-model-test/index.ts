@@ -28,17 +28,15 @@ serve(async (req) => {
 
     // Step 1: Ingest schedule for yesterday
     console.log('Step 1: Ingesting schedule...');
-    const scheduleResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ingest-schedule`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-        'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      },
-      body: JSON.stringify({ date: testDate, force: true })
+    const { data: scheduleResult, error: scheduleError } = await supabase.functions.invoke('ingest-schedule', {
+      body: { date: testDate, force: true }
     });
 
-    const scheduleResult = await scheduleResponse.json();
+    if (scheduleError) {
+      console.error('Schedule ingestion error:', scheduleError);
+      throw new Error(`Schedule ingestion failed: ${scheduleError.message}`);
+    }
+
     console.log('Schedule result:', scheduleResult);
 
     if (!scheduleResult.success || scheduleResult.gamesProcessed === 0) {
@@ -54,51 +52,45 @@ serve(async (req) => {
 
     // Step 2: Ingest lineups for yesterday
     console.log('Step 2: Ingesting lineups...');
-    const lineupResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/ingest-lineups`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-        'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      },
-      body: JSON.stringify({ date: testDate, force: true })
+    const { data: lineupResult, error: lineupError } = await supabase.functions.invoke('ingest-lineups', {
+      body: { date: testDate, force: true }
     });
 
-    const lineupResult = await lineupResponse.json();
+    if (lineupError) {
+      console.error('Lineup ingestion error:', lineupError);
+      throw new Error(`Lineup ingestion failed: ${lineupError.message}`);
+    }
+
     console.log('Lineup result:', lineupResult);
 
     // Step 3: Generate predictions
     console.log('Step 3: Generating predictions...');
-    const predictionResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/generate-predictions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-        'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      },
-      body: JSON.stringify({ date: testDate, force: true })
+    const { data: predictionResult, error: predictionError } = await supabase.functions.invoke('generate-predictions', {
+      body: { date: testDate, force: true }
     });
 
-    const predictionResult = await predictionResponse.json();
+    if (predictionError) {
+      console.error('Prediction generation error:', predictionError);
+      throw new Error(`Prediction generation failed: ${predictionError.message}`);
+    }
+
     console.log('Prediction result:', predictionResult);
 
     // Step 4: Analyze results
     console.log('Step 4: Analyzing results...');
-    const analysisResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/prediction-analysis`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-        'Content-Type': 'application/json',
-        'apikey': Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      },
-      body: JSON.stringify({ 
+    const { data: analysisResult, error: analysisError } = await supabase.functions.invoke('prediction-analysis', {
+      body: { 
         startDate: testDate, 
         endDate: testDate, 
         includeDetails: true 
-      })
+      }
     });
 
-    const analysisResult = await analysisResponse.json();
+    if (analysisError) {
+      console.error('Analysis error:', analysisError);
+      throw new Error(`Analysis failed: ${analysisError.message}`);
+    }
+
     console.log('Analysis result:', analysisResult);
 
     // Return comprehensive results
