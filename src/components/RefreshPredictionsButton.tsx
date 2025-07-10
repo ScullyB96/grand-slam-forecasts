@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Search, Download } from 'lucide-react';
+import { RefreshCw, Search, Download, TestTube } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useGeneratePredictions } from '@/hooks/useMonteCarloSimulation';
 import { supabase } from '@/integrations/supabase/client';
@@ -20,6 +20,7 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
   const { mutate: generatePredictions, isPending } = useGeneratePredictions();
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [isIngesting, setIsIngesting] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
 
   const handleRefreshPredictions = () => {
     if (!gameIds || gameIds.length === 0) {
@@ -136,8 +137,54 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
     }
   };
 
+  const handleTestLineups = async () => {
+    setIsTesting(true);
+    
+    try {
+      toast({
+        title: "Creating Test Lineups",
+        description: "Creating mock lineups for all games..."
+      });
+
+      const { data, error } = await supabase.functions.invoke('test-lineups', {
+        body: { source: 'manual' }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Test Lineups Created",
+        description: `Created ${data.processed} lineup entries for ${data.total_games} games`,
+      });
+
+      if (onRefresh) {
+        setTimeout(() => {
+          onRefresh();
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Error creating test lineups:', error);
+      toast({
+        title: "Test Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   return (
     <div className="flex gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleTestLineups}
+        disabled={disabled || isTesting}
+      >
+        <TestTube className={`h-4 w-4 mr-2 ${isTesting ? 'animate-spin' : ''}`} />
+        {isTesting ? 'Testing...' : 'Test Lineups'}
+      </Button>
       <Button
         variant="outline"
         size="sm"

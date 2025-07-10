@@ -128,31 +128,43 @@ serve(async (req) => {
         !lineups.some(lineup => lineup.game_id === game.game_id)
       );
 
+      console.log(`${gamesNeedingLineups.length} games need lineups`);
+
       // First try Rotowire
       try {
+        console.log('Attempting to fetch from Rotowire...');
         const rotowireLineups = await fetchFromRotowire(gamesNeedingLineups);
+        console.log(`Rotowire returned ${rotowireLineups.length} lineup entries`);
+        
         if (rotowireLineups.length > 0) {
           lineups.push(...rotowireLineups);
           console.log(`✅ Found ${rotowireLineups.length} projected lineups from Rotowire`);
         } else {
+          console.log('❌ No lineups found from Rotowire, trying mattgorb...');
           // Fallback to mattgorb.github.io
           const mattgorbLineups = await fetchFromMattgorb(gamesNeedingLineups);
+          console.log(`Mattgorb returned ${mattgorbLineups.length} lineup entries`);
+          
           if (mattgorbLineups.length > 0) {
             lineups.push(...mattgorbLineups);
             console.log(`✅ Found ${mattgorbLineups.length} projected lineups from mattgorb`);
           } else {
+            console.log('❌ No lineups from external sources, creating mock lineups...');
             // Last resort: create mock lineups for games without any data
             const mockLineups = createMockLineups(gamesNeedingLineups);
+            console.log(`Mock lineups created for ${gamesNeedingLineups.length} games: ${mockLineups.length} total entries`);
             lineups.push(...mockLineups);
-            console.log(`⚠️ Created ${mockLineups.length} mock lineups as fallback`);
+            console.log(`⚠️ Created ${mockLineups.length} mock lineup entries as fallback`);
           }
         }
       } catch (error) {
         console.error('Error fetching backup lineups:', error);
         // Create mock lineups as final fallback
+        console.log('Creating mock lineups due to error...');
         const mockLineups = createMockLineups(gamesNeedingLineups);
+        console.log(`Mock lineups created for ${gamesNeedingLineups.length} games: ${mockLineups.length} total entries`);
         lineups.push(...mockLineups);
-        console.log(`⚠️ Created ${mockLineups.length} mock lineups due to backup failure`);
+        console.log(`⚠️ Created ${mockLineups.length} mock lineup entries due to backup failure`);
       }
     }
 
@@ -451,8 +463,8 @@ function parseRotowireLineups(html: string, games: any[]) {
   
   // If still no lineups found, create mock data as fallback
   if (lineups.length === 0) {
-    console.log('No valid lineups parsed from Rotowire, creating mock data...');
-    return createMockLineups(games);
+    console.log('No valid lineups parsed from Rotowire, returning empty to fall back to mock data');
+    return [];
   }
   
   console.log(`Successfully parsed ${lineups.length} lineup entries from Rotowire`);
