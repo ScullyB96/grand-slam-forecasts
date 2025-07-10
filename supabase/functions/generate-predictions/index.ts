@@ -256,7 +256,7 @@ async function getTeamStats(supabase: any, teamId: number): Promise<TeamStats> {
     .select('*')
     .eq('team_id', teamId)
     .eq('season', new Date().getFullYear())
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(`Critical Error: No team stats found for team_id ${teamId}`, error);
