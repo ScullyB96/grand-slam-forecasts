@@ -26,3 +26,15 @@ verify_jwt = false
 
 [functions.monte-carlo-simulation]
 verify_jwt = false
+
+[functions.ingest-lineups]
+verify_jwt = false
+
+[functions.lineup-scheduler]
+verify_jwt = false
+
+[functions.lineup-orchestrator]
+verify_jwt = false
+
+[functions.lineup-monitor]
+verify_jwt = false

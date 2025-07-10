@@ -1,12 +1,31 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getGameLineups, getGameBoxscore, extractLineupsFromGameFeed, extractLineupsFromBoxscore, createTeamIdMapping, getSchedule } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+interface LineupPlayer {
+  id: number;
+  fullName: string;
+  battingOrder?: number;
+  position: {
+    code: string;
+    name: string;
+  };
+}
+
+interface GameLineup {
+  team: {
+    id: number;
+    name: string;
+  };
+  batters: LineupPlayer[];
+  pitchers: LineupPlayer[];
+}
 
 serve(async (req) => {
   console.log('=== LINEUP INGESTION FUNCTION STARTED ===');
@@ -20,353 +39,200 @@ serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   );
 
-  let jobId: number | null = null;
-
   try {
-    // Parse request body for date parameter
-    let targetDate = new Date().toISOString().split('T')[0]; // Default to today
-    let force = false;
-    
+    // Parse request parameters
+    let targetDate = new Date().toISOString().split('T')[0];
+    let forceRefresh = false;
+
     if (req.method === 'POST') {
       try {
         const body = await req.json();
-        if (body.date) {
-          targetDate = body.date;
-        }
-        if (body.force) {
-          force = body.force;
-        }
+        if (body.date) targetDate = body.date;
+        if (body.force) forceRefresh = body.force;
       } catch (e) {
-        console.log('No valid JSON body, using defaults');
+        // Use defaults
       }
     }
-    
-    // Also check URL parameters
+
     const url = new URL(req.url);
     const urlDate = url.searchParams.get('date');
-    if (urlDate) {
-      targetDate = urlDate;
-    }
-    
-    console.log(`Target date: ${targetDate}, Force: ${force}`);
-    console.log('Creating lineup ingestion job...');
-    
-    // Log job start
-    const { data: jobRecord, error: jobError } = await supabase
-      .from('data_ingestion_jobs')
+    const urlForce = url.searchParams.get('force');
+    if (urlDate) targetDate = urlDate;
+    if (urlForce) forceRefresh = urlForce === 'true';
+
+    console.log(`🎯 Starting lineup ingestion for ${targetDate}, force: ${forceRefresh}`);
+
+    // Create or get lineup ingestion job
+    const jobId = crypto.randomUUID();
+    const { error: jobError } = await supabase
+      .from('lineup_ingestion_jobs')
       .insert({
-        job_name: 'ingest-lineups',
-        job_type: 'lineups',
+        id: jobId,
+        job_date: targetDate,
         status: 'running',
         started_at: new Date().toISOString()
-      })
-      .select('id')
-      .single();
+      });
 
     if (jobError) {
       console.error('Failed to create job:', jobError);
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Failed to create job: ' + jobError.message
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      throw new Error(`Failed to create ingestion job: ${jobError.message}`);
     }
+
+    // Step 1: Get today's games from MLB API
+    console.log('📅 Step 1: Fetching schedule from MLB API...');
+    const scheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${targetDate}&hydrate=team,linescore`;
+    const scheduleResponse = await fetch(scheduleUrl);
     
-    jobId = jobRecord.id;
-    console.log('Created job with ID:', jobId);
+    if (!scheduleResponse.ok) {
+      throw new Error(`Failed to fetch schedule: ${scheduleResponse.statusText}`);
+    }
 
-    // Step 1: Validate games exist in MLB schedule first
-    console.log('🔍 Validating games against MLB schedule API...');
-    const scheduleData = await getSchedule(targetDate);
-    const validMLBGames = scheduleData.dates?.[0]?.games || [];
-    const validGameIds = new Set(validMLBGames.map(game => game.gamePk));
+    const scheduleData = await scheduleResponse.json();
+    const games = scheduleData.dates?.[0]?.games || [];
     
-    console.log(`Found ${validMLBGames.length} valid games in MLB schedule`);
-    
-    if (validMLBGames.length === 0) {
-      console.log(`No games in MLB schedule for ${targetDate}`);
-      await supabase
-        .from('data_ingestion_jobs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          records_processed: 0
-        })
-        .eq('id', jobId);
-
-      return new Response(JSON.stringify({
-        success: true,
-        message: `No games in MLB schedule for ${targetDate}`,
-        processed: 0
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Step 2: Get games from database that exist in MLB schedule
-    console.log('📊 Fetching games from database...');
-    const { data: allGames, error: gamesError } = await supabase
-      .from('games')
-      .select(`
-        game_id,
-        home_team_id,
-        away_team_id,
-        game_time,
-        home_team:teams!games_home_team_id_fkey(id, name, abbreviation),
-        away_team:teams!games_away_team_id_fkey(id, name, abbreviation)
-      `)
-      .eq('game_date', targetDate);
-
-    if (gamesError) {
-      console.error('Error fetching games:', gamesError);
-      throw new Error('Failed to fetch games: ' + gamesError.message);
-    }
-
-    // Filter to only games that exist in MLB schedule
-    const games = allGames?.filter(game => validGameIds.has(game.game_id)) || [];
-    const invalidGames = allGames?.filter(game => !validGameIds.has(game.game_id)) || [];
-    
-    if (invalidGames.length > 0) {
-      console.log(`⚠️ Found ${invalidGames.length} games in database not in MLB schedule - these should be cleaned up`);
-    }
-
-    console.log(`Found ${games.length} valid games for ${targetDate} (filtered from ${allGames?.length || 0} database games)`);
-
-    if (!games || games.length === 0) {
-      console.log(`No games found for ${targetDate}, completing job`);
-      await supabase
-        .from('data_ingestion_jobs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          records_processed: 0
-        })
-        .eq('id', jobId);
-
-      return new Response(JSON.stringify({
-        success: true,
-        message: `No games found for ${targetDate}`,
-        processed: 0
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Get team mapping for MLB ID to database ID conversion
-    console.log('Fetching team mapping...');
-    const { data: teams, error: teamsError } = await supabase
-      .from('teams')
-      .select('id, team_id, name, abbreviation');
-
-    if (teamsError) {
-      console.error('Error fetching teams:', teamsError);
-      throw new Error('Failed to fetch teams: ' + teamsError.message);
-    }
-
-    console.log('Available teams:', teams?.map(t => `${t.name} (MLB: ${t.team_id}, DB: ${t.id})`));
-    const teamIdMapping = createTeamIdMapping(teams || []);
-    console.log('Team mapping created:', Array.from(teamIdMapping.entries()));
-
-    // Clear existing lineups for today's games first to prevent duplicates
-    console.log('Clearing existing lineups to prevent duplicates...');
-    for (const game of games) {
-      const { error: deleteError } = await supabase
-        .from('game_lineups')
-        .delete()
-        .eq('game_id', game.game_id);
+    if (games.length === 0) {
+      console.log(`No games found for ${targetDate}`);
       
-      if (deleteError) {
-        console.error(`Error clearing lineups for game ${game.game_id}:`, deleteError);
-      } else {
-        console.log(`✅ Cleared existing lineups for game ${game.game_id}`);
-      }
+      await supabase
+        .from('lineup_ingestion_jobs')
+        .update({
+          status: 'completed',
+          games_expected: 0,
+          games_processed: 0,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: `No games scheduled for ${targetDate}`,
+        date: targetDate,
+        games_processed: 0,
+        games_expected: 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    // STEP 1: Try to get official lineups from MLB Stats API first  
-    console.log('🔍 Step 1: Attempting to fetch official lineups from MLB Stats API...');
-    let lineups: any[] = [];
-    let officialLineupsFound = 0;
-    
+    console.log(`✅ Found ${games.length} games for ${targetDate}`);
+
+    // Update job with expected games count
+    await supabase
+      .from('lineup_ingestion_jobs')
+      .update({ games_expected: games.length })
+      .eq('id', jobId);
+
+    // Step 2: Process each game and fetch lineups
+    const results = [];
+    const failedGames = [];
+    let processedCount = 0;
+
     for (const game of games) {
       try {
-        console.log(`Fetching lineup for game ${game.game_id}`);
-        
-        // Try boxscore endpoint first for full lineup data
-        try {
-          console.log(`Trying boxscore endpoint for game ${game.game_id}`);
-          const boxscoreData = await getGameBoxscore(game.game_id);
-          const gameData = await getGameLineups(game.game_id);
-          const gameLineups = extractLineupsFromBoxscore(boxscoreData, gameData, teamIdMapping);
-          
-          if (gameLineups.length > 0) {
-            lineups.push(...gameLineups);
-            officialLineupsFound++;
-            console.log(`✅ Found official lineup from boxscore for game ${game.game_id} (${gameLineups.length} players)`);
-            continue; // Skip fallback if boxscore worked
+        console.log(`🏈 Processing game ${game.gamePk}: ${game.teams.away.team.name} @ ${game.teams.home.team.name}`);
+
+        // Check if lineups already exist (unless force refresh)
+        if (!forceRefresh) {
+          const { data: existingLineups } = await supabase
+            .from('lineups')
+            .select('id')
+            .eq('game_pk', game.gamePk)
+            .limit(1);
+
+          if (existingLineups && existingLineups.length > 0) {
+            console.log(`⏭️ Lineups already exist for game ${game.gamePk}, skipping`);
+            processedCount++;
+            continue;
           }
-        } catch (boxscoreError) {
-          console.log(`Boxscore not available for game ${game.game_id}, trying live feed`);
         }
+
+        // Fetch lineups from MLB API
+        const lineupUrl = `https://statsapi.mlb.com/api/v1/game/${game.gamePk}/boxscore`;
+        const lineupResponse = await fetch(lineupUrl);
         
-        // Fallback to live feed method
-        const gameData = await getGameLineups(game.game_id);
-        const gameLineups = extractLineupsFromGameFeed(gameData, teamIdMapping);
-        
-        if (gameLineups.length > 0) {
-          lineups.push(...gameLineups);
-          officialLineupsFound++;
-          console.log(`✅ Found official lineup from live feed for game ${game.game_id} (${gameLineups.length} players)`);
-        } else {
-          console.log(`⏳ Official lineup not yet available for game ${game.game_id}`);
+        if (!lineupResponse.ok) {
+          console.error(`Failed to fetch lineup for game ${game.gamePk}`);
+          failedGames.push({
+            gamePk: game.gamePk,
+            error: `Failed to fetch lineup: ${lineupResponse.statusText}`
+          });
+          continue;
         }
+
+        const lineupData = await lineupResponse.json();
+        
+        // Extract lineup data for both teams
+        const awayTeam = lineupData.teams?.away;
+        const homeTeam = lineupData.teams?.home;
+
+        if (!awayTeam || !homeTeam) {
+          console.error(`Invalid lineup data for game ${game.gamePk}`);
+          failedGames.push({
+            gamePk: game.gamePk,
+            error: 'Invalid lineup data structure'
+          });
+          continue;
+        }
+
+        // Process away team lineup
+        await processTeamLineup(supabase, game.gamePk, awayTeam, targetDate, forceRefresh);
+        
+        // Process home team lineup  
+        await processTeamLineup(supabase, game.gamePk, homeTeam, targetDate, forceRefresh);
+
+        processedCount++;
+        results.push({
+          gamePk: game.gamePk,
+          awayTeam: game.teams.away.team.name,
+          homeTeam: game.teams.home.team.name,
+          status: 'success'
+        });
+
+        console.log(`✅ Successfully processed game ${game.gamePk}`);
+
       } catch (error) {
-        console.error(`Failed to fetch lineup for game ${game.game_id}:`, error);
+        console.error(`❌ Error processing game ${game.gamePk}:`, error);
+        failedGames.push({
+          gamePk: game.gamePk,
+          error: error.message
+        });
       }
     }
 
-    console.log(`Official lineups found for ${officialLineupsFound}/${games.length} games`);
-
-    // STEP 2: For games without official lineups, fetch probable pitchers from schedule API
-    console.log('🔍 Step 2: Fetching probable pitchers for games without official lineups...');
-    
-    if (officialLineupsFound < games.length) {
-      const gamesNeedingPitchers = games.filter(game => 
-        !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'pitching')
-      );
-
-      for (const game of gamesNeedingPitchers) {
-        try {
-          // Fetch probable pitchers from MLB schedule API
-          const scheduleData = await getSchedule(targetDate);
-          const probablePitchers = extractProbablePitchersFromSchedule(scheduleData, game, teamIdMapping);
-          
-          if (probablePitchers.length > 0) {
-            lineups.push(...probablePitchers);
-            console.log(`✅ Added probable pitchers for game ${game.game_id}`);
-          } else {
-            console.log(`⚠️ No probable pitchers found for game ${game.game_id}`);
-          }
-        } catch (error) {
-          console.error(`Failed to get probable pitchers for game ${game.game_id}:`, error);
-        }
-      }
-    }
-
-    // STEP 3: Log games without lineups (no mock creation - strict policy)
-    console.log('🔍 Step 3: Checking games without official lineups...');
-    
-    const gamesWithoutLineups = games.filter(game => 
-      !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
-    );
-
-    const gamesWithPitchersOnly = games.filter(game => 
-      lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'pitching') &&
-      !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
-    );
-
-    if (gamesWithoutLineups.length > 0) {
-      console.log(`⚠️ ${gamesWithoutLineups.length} games do not have official lineups yet:`);
-      gamesWithoutLineups.forEach(game => {
-        console.log(`  - Game ${game.game_id}: ${game.away_team?.name} @ ${game.home_team?.name}`);
-      });
-    }
-
-    if (gamesWithPitchersOnly.length > 0) {
-      console.log(`📌 ${gamesWithPitchersOnly.length} games have probable pitchers but no batting lineups`);
-    }
-
-    console.log('⚠️ NO MOCK LINEUPS will be created. Only official data from MLB API is used.');
-
-    console.log(`Total lineups collected: ${lineups.length}`);
-    
-    // Store lineups in database
-    let processed = 0;
-    let errors = 0;
-    const errorDetails: string[] = [];
-
-    if (lineups.length > 0) {
-      // Validate team IDs before inserting
-      console.log('Validating lineup team IDs...');
-      const validLineups = [];
-      const availableTeamIds = teams?.map(t => t.id) || [];
-      
-      for (const lineup of lineups) {
-        if (availableTeamIds.includes(lineup.team_id)) {
-          validLineups.push(lineup);
-        } else {
-          console.error(`❌ Invalid team ID ${lineup.team_id} for player ${lineup.player_name} in game ${lineup.game_id}`);
-          errors++;
-          errorDetails.push(`Invalid team ID ${lineup.team_id} for player ${lineup.player_name}`);
-        }
-      }
-      
-      console.log(`Valid lineups: ${validLineups.length}, Invalid: ${lineups.length - validLineups.length}`);
-      
-      if (validLineups.length > 0) {
-        // Insert valid lineups
-        const { error: lineupError } = await supabase
-          .from('game_lineups')
-          .insert(validLineups);
-
-        if (lineupError) {
-          console.error('Error inserting lineups:', lineupError);
-          errors++;
-          errorDetails.push(`Failed to insert lineups: ${lineupError.message}`);
-        } else {
-          processed = validLineups.length;
-          console.log(`✅ Successfully inserted ${processed} lineup entries`);
-        }
-      }
-    }
-
-    // Complete job
-    console.log(`Completing job: ${processed} processed, ${errors} errors`);
+    // Update job completion status
+    const jobStatus = failedGames.length === 0 ? 'completed' : 'completed_with_errors';
     await supabase
-      .from('data_ingestion_jobs')
+      .from('lineup_ingestion_jobs')
       .update({
-        status: 'completed',
+        status: jobStatus,
+        games_processed: processedCount,
+        games_failed: failedGames.length,
+        failed_games: failedGames.length > 0 ? failedGames : null,
         completed_at: new Date().toISOString(),
-        records_processed: games.length,
-        records_inserted: processed,
-        errors_count: errors,
-        error_details: errorDetails.length > 0 ? { errors: errorDetails } : null
+        error_details: failedGames.length > 0 ? `${failedGames.length} games failed to process` : null
       })
       .eq('id', jobId);
 
-    console.log('✅ Lineup ingestion completed successfully');
-
-    return new Response(JSON.stringify({
+    const summary = {
       success: true,
-      processed,
-      errors,
-      total_games: games.length,
-      official_lineups: officialLineupsFound,
-      message: `Ingested lineups for ${processed} players with ${errors} errors (${officialLineupsFound} official)`,
-      error_details: errorDetails.length > 0 ? errorDetails : undefined
-    }), {
+      date: targetDate,
+      games_expected: games.length,
+      games_processed: processedCount,
+      games_failed: failedGames.length,
+      failed_games: failedGames,
+      job_id: jobId,
+      results: results,
+      message: `Processed ${processedCount}/${games.length} games for ${targetDate}`
+    };
+
+    console.log('🎉 Lineup ingestion completed:', summary);
+
+    return new Response(JSON.stringify(summary), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
     console.error('❌ Lineup ingestion failed:', error);
-    
-    // Update job as failed if we have a job ID
-    if (jobId) {
-      try {
-        await supabase
-          .from('data_ingestion_jobs')
-          .update({
-            status: 'failed',
-            completed_at: new Date().toISOString(),
-            error_details: { error: error.message }
-          })
-          .eq('id', jobId);
-      } catch (updateError) {
-        console.error('Failed to update job as failed:', updateError);
-      }
-    }
     
     return new Response(JSON.stringify({
       success: false,
@@ -379,313 +245,69 @@ serve(async (req) => {
   }
 });
 
-// Extract probable pitchers from schedule data
-function extractProbablePitchersFromSchedule(scheduleData: any, game: any, teamIdMapping: Map<number, number>) {
-  const lineups: any[] = [];
-  
-  if (!scheduleData?.dates?.[0]?.games) {
-    return lineups;
+async function processTeamLineup(supabase: any, gamePk: number, teamData: any, date: string, forceRefresh: boolean) {
+  const teamId = teamData.team?.id;
+  if (!teamId) {
+    console.error('No team ID found in team data');
+    return;
   }
 
-  // Find the specific game in the schedule
-  const scheduleGame = scheduleData.dates[0].games.find((g: any) => g.gamePk === game.game_id);
-  
-  if (!scheduleGame) {
-    console.log(`Game ${game.game_id} not found in schedule data`);
-    return lineups;
+  // Clear existing lineups if force refresh
+  if (forceRefresh) {
+    await supabase
+      .from('lineups')
+      .delete()
+      .eq('game_pk', gamePk)
+      .eq('team_id', teamId);
   }
 
-  // Extract probable pitchers
-  if (scheduleGame.teams?.home?.probablePitcher) {
-    const homePitcher = scheduleGame.teams.home.probablePitcher;
-    const homeTeamId = teamIdMapping.get(scheduleGame.teams.home.team.id);
+  // Process batters
+  const batters = teamData.batters || [];
+  for (let i = 0; i < batters.length; i++) {
+    const playerId = batters[i];
+    const playerInfo = teamData.players?.[`ID${playerId}`];
     
-    if (homeTeamId) {
-      lineups.push({
-        game_id: game.game_id,
-        team_id: homeTeamId,
-        lineup_type: 'pitching',
-        batting_order: null,
-        player_id: homePitcher.id,
-        player_name: homePitcher.fullName,
-        position: 'SP',
-        handedness: homePitcher.pitchHand?.code || 'R',
-        is_starter: true
-      });
+    if (playerInfo?.person) {
+      const battingOrder = i + 1; // Batting order starts at 1
+      const position = playerInfo.position;
+      
+      await supabase
+        .from('lineups')
+        .upsert({
+          game_pk: gamePk,
+          team_id: teamId,
+          player_id: playerInfo.person.id,
+          player_name: playerInfo.person.fullName,
+          batting_order: battingOrder,
+          position_code: position?.code || null,
+          date: date
+        }, {
+          onConflict: 'game_pk,player_id'
+        });
     }
   }
 
-  if (scheduleGame.teams?.away?.probablePitcher) {
-    const awayPitcher = scheduleGame.teams.away.probablePitcher;
-    const awayTeamId = teamIdMapping.get(scheduleGame.teams.away.team.id);
+  // Process pitchers (starters and relievers)
+  const pitchers = teamData.pitchers || [];
+  for (const playerId of pitchers) {
+    const playerInfo = teamData.players?.[`ID${playerId}`];
     
-    if (awayTeamId) {
-      lineups.push({
-        game_id: game.game_id,
-        team_id: awayTeamId,
-        lineup_type: 'pitching',
-        batting_order: null,
-        player_id: awayPitcher.id,
-        player_name: awayPitcher.fullName,
-        position: 'SP',
-        handedness: awayPitcher.pitchHand?.code || 'R',
-        is_starter: true
-      });
+    if (playerInfo?.person) {
+      await supabase
+        .from('lineups')
+        .upsert({
+          game_pk: gamePk,
+          team_id: teamId,
+          player_id: playerInfo.person.id,
+          player_name: playerInfo.person.fullName,
+          batting_order: null, // Pitchers don't have batting order
+          position_code: 'P',
+          date: date
+        }, {
+          onConflict: 'game_pk,player_id'
+        });
     }
   }
 
-  return lineups;
-}
-
-// Create realistic test lineup for specific games (Cubs vs Twins example)
-function createRealisticTestLineupForGame(gameId: number, gameData: any) {
-  const lineups: any[] = [];
-  
-  // Special case for Cubs vs Twins game (777166)
-  if (gameId === 777166) {
-    return createCubsTwinsTestLineup();
-  }
-  
-  // Special case for Mets vs Orioles game (777165)
-  if (gameId === 777165) {
-    return createMetsOriolesTestLineup();
-  }
-  
-  // Generic test lineup for other allowed games
-  const homeTeamId = gameData.home_team_id;
-  const awayTeamId = gameData.away_team_id;
-  const homeTeamAbbr = gameData.home_team?.abbreviation || 'HOME';
-  const awayTeamAbbr = gameData.away_team?.abbreviation || 'AWAY';
-  
-  // Generic batting lineups
-  const battingOrder = [
-    { position: 'CF', handedness: 'L' },
-    { position: 'SS', handedness: 'R' },
-    { position: 'RF', handedness: 'L' },
-    { position: '1B', handedness: 'R' },
-    { position: 'DH', handedness: 'L' },
-    { position: 'LF', handedness: 'R' },
-    { position: '3B', handedness: 'S' },
-    { position: 'C', handedness: 'R' },
-    { position: '2B', handedness: 'L' }
-  ];
-  
-  // Create batting lineups for both teams
-  [{ id: awayTeamId, abbr: awayTeamAbbr, type: 'Away' }, { id: homeTeamId, abbr: homeTeamAbbr, type: 'Home' }].forEach((team, teamIndex) => {
-    battingOrder.forEach((spot, index) => {
-      lineups.push({
-        game_id: gameId,
-        team_id: team.id,
-        lineup_type: 'batting',
-        batting_order: index + 1,
-        player_id: 700000 + (teamIndex * 100) + index,
-        player_name: `${spot.position} Player (${team.abbr})`,
-        position: spot.position,
-        handedness: spot.handedness,
-        is_starter: true
-      });
-    });
-    
-    // Add starting pitcher
-    lineups.push({
-      game_id: gameId,
-      team_id: team.id,
-      lineup_type: 'pitching',
-      batting_order: null,
-      player_id: 700200 + teamIndex,
-      player_name: `Starting Pitcher (${team.abbr})`,
-      position: 'SP',
-      handedness: Math.random() > 0.3 ? 'R' : 'L',
-      is_starter: true
-    });
-  });
-  
-  console.log(`Created realistic test lineup for game ${gameId}: ${lineups.length} entries`);
-  return lineups;
-}
-
-// Create test lineup for Cubs vs Twins game (777166)
-function createCubsTwinsTestLineup() {
-  const gameId = 777166;
-  const cubsTeamId = 127; // CHC (database ID)
-  const twinsTeamId = 126; // MIN (database ID)
-  
-  const lineups: any[] = [];
-  
-  // Cubs lineup (away team) - typical Cubs batting order
-  const cubsLineup = [
-    { name: 'N. Hoerner', position: '2B', handedness: 'R' },
-    { name: 'C. Bellinger', position: 'CF', handedness: 'L' },
-    { name: 'I. Paredes', position: '3B', handedness: 'R' },
-    { name: 'S. Suzuki', position: 'RF', handedness: 'R' },
-    { name: 'P. Crow-Armstrong', position: 'LF', handedness: 'L' },
-    { name: 'D. Swanson', position: 'SS', handedness: 'R' },
-    { name: 'M. Busch', position: '1B', handedness: 'L' },
-    { name: 'M. Amaya', position: 'C', handedness: 'R' },
-    { name: 'C. Rea', position: 'DH', handedness: 'R' }
-  ];
-  
-  // Twins lineup (home team) - typical Twins batting order
-  const twinsLineup = [
-    { name: 'C. Correa', position: 'SS', handedness: 'R' },
-    { name: 'R. Lewis Jr.', position: '3B', handedness: 'R' },
-    { name: 'M. Wallner', position: 'LF', handedness: 'L' },
-    { name: 'T. Larnach', position: 'RF', handedness: 'L' },
-    { name: 'W. Castro', position: '2B', handedness: 'S' },
-    { name: 'C. Julien', position: '1B', handedness: 'R' },
-    { name: 'B. Lee', position: 'CF', handedness: 'L' },
-    { name: 'R. Jeffers', position: 'C', handedness: 'R' },
-    { name: 'E. Farmer', position: 'DH', handedness: 'R' }
-  ];
-  
-  // Add Cubs batting lineup
-  cubsLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: cubsTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 650000 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add Twins batting lineup
-  twinsLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: twinsTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 650100 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add probable pitchers
-  lineups.push({
-    game_id: gameId,
-    team_id: cubsTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 650200,
-    player_name: 'Shota Imanaga',
-    position: 'SP',
-    handedness: 'L',
-    is_starter: true
-  });
-  
-  lineups.push({
-    game_id: gameId,
-    team_id: twinsTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 650201,
-    player_name: 'Pablo López',
-    position: 'SP',
-    handedness: 'R',
-    is_starter: true
-  });
-  
-  console.log(`Created realistic Cubs vs Twins lineup: ${lineups.length} entries`);
-  return lineups;
-}
-
-// Create test lineup for Mets vs Orioles game based on the image
-function createMetsOriolesTestLineup() {
-  const gameId = 777165;
-  const metsTeamId = 123; // NYM (database ID)
-  const oriolesTeamId = 122; // BAL (database ID)
-  
-  const lineups: any[] = [];
-  
-  // Mets lineup (away team)
-  const metsLineup = [
-    { name: 'B. Nimmo', position: 'LF', handedness: 'L' },
-    { name: 'F. Lindor', position: 'SS', handedness: 'S' },
-    { name: 'Juan Soto', position: 'RF', handedness: 'L' },
-    { name: 'Pete Alonso', position: '1B', handedness: 'R' },
-    { name: 'Jesse Winker', position: 'DH', handedness: 'L' },
-    { name: 'Jeff McNeil', position: 'CF', handedness: 'L' },
-    { name: 'R. Mauricio', position: '3B', handedness: 'S' },
-    { name: 'Luis Torrens', position: 'C', handedness: 'R' },
-    { name: 'Brett Baty', position: '2B', handedness: 'L' }
-  ];
-  
-  // Orioles lineup (home team)
-  const oriolesLineup = [
-    { name: 'J. Holliday', position: '2B', handedness: 'L' },
-    { name: 'J. Westburg', position: '3B', handedness: 'R' },
-    { name: 'G. Henderson', position: 'SS', handedness: 'L' },
-    { name: 'Ryan Mountcastle', position: '1B', handedness: 'R' },
-    { name: 'R. Laureano', position: 'RF', handedness: 'R' },
-    { name: 'C. Cowser', position: 'LF', handedness: 'L' },
-    { name: "T. O'Neill", position: 'DH', handedness: 'R' },
-    { name: 'C. Mullins', position: 'CF', handedness: 'L' },
-    { name: 'J. Stallings', position: 'C', handedness: 'R' }
-  ];
-  
-  // Add Mets batting lineup
-  metsLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: metsTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 600000 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add Orioles batting lineup
-  oriolesLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: oriolesTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 600100 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add probable pitchers
-  lineups.push({
-    game_id: gameId,
-    team_id: metsTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 600200,
-    player_name: 'David Peterson',
-    position: 'SP',
-    handedness: 'L',
-    is_starter: true
-  });
-  
-  lineups.push({
-    game_id: gameId,
-    team_id: oriolesTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 600201,
-    player_name: 'Charlie Morton',
-    position: 'SP',
-    handedness: 'R',
-    is_starter: true
-  });
-  
-  console.log(`Created realistic Mets vs Orioles lineup: ${lineups.length} entries`);
-  return lineups;
+  console.log(`✅ Processed lineup for team ${teamId} in game ${gamePk}`);
 }

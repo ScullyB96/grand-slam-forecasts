@@ -573,6 +573,93 @@ export type Database = {
           },
         ]
       }
+      lineup_ingestion_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          error_details: string | null
+          failed_games: Json | null
+          games_expected: number | null
+          games_failed: number | null
+          games_processed: number | null
+          id: string
+          job_date: string
+          next_retry_at: string | null
+          retry_count: number | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: string | null
+          failed_games?: Json | null
+          games_expected?: number | null
+          games_failed?: number | null
+          games_processed?: number | null
+          id?: string
+          job_date: string
+          next_retry_at?: string | null
+          retry_count?: number | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          error_details?: string | null
+          failed_games?: Json | null
+          games_expected?: number | null
+          games_failed?: number | null
+          games_processed?: number | null
+          id?: string
+          job_date?: string
+          next_retry_at?: string | null
+          retry_count?: number | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
+      lineups: {
+        Row: {
+          batting_order: number | null
+          created_at: string
+          date: string
+          game_pk: number
+          id: string
+          player_id: number
+          player_name: string | null
+          position_code: string | null
+          team_id: number
+          updated_at: string
+        }
+        Insert: {
+          batting_order?: number | null
+          created_at?: string
+          date?: string
+          game_pk: number
+          id?: string
+          player_id: number
+          player_name?: string | null
+          position_code?: string | null
+          team_id: number
+          updated_at?: string
+        }
+        Update: {
+          batting_order?: number | null
+          created_at?: string
+          date?: string
+          game_pk?: number
+          id?: string
+          player_id?: number
+          player_name?: string | null
+          position_code?: string | null
+          team_id?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ml_model_metadata: {
         Row: {
           created_at: string | null

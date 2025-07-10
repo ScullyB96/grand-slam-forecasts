@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -20,55 +21,35 @@ serve(async (req) => {
   );
 
   try {
-    console.log('🔄 Running scheduled lineup monitoring and ingestion...');
-    
-    // Call the lineup monitor function
-    const { data: monitorResult, error: monitorError } = await supabase.functions.invoke('lineup-monitor');
-    
-    if (monitorError) {
-      console.error('Lineup monitor failed:', monitorError);
-    } else {
-      console.log('✅ Lineup monitor completed:', monitorResult);
-    }
-    
-    // Call the lineup ingestion function to ensure all games have lineups
-    const { data: ingestResult, error: ingestError } = await supabase.functions.invoke('ingest-lineups', {
-      body: { 
-        date: new Date().toISOString().split('T')[0],
-        force: false 
-      }
-    });
-    
-    if (ingestError) {
-      console.error('Lineup ingestion failed:', ingestError);
-    } else {
-      console.log('✅ Lineup ingestion completed:', ingestResult);
-    }
-    
-    // Regenerate predictions with updated lineup data
-    const { data: predictionResult, error: predictionError } = await supabase.functions.invoke('generate-predictions');
-    
-    if (predictionError) {
-      console.error('Prediction generation failed:', predictionError);
-    } else {
-      console.log('✅ Prediction generation completed:', predictionResult);
-    }
+    // This function sets up the daily lineup ingestion cron job
+    console.log('🕐 Setting up daily lineup ingestion schedule...');
 
-    console.log('✅ Scheduled lineup update cycle completed successfully');
+    // Create the cron job to run every day at 4 AM ET (9 AM UTC)
+    const cronResult = await supabase.rpc('cron_schedule', {
+      job_name: 'daily-lineup-ingestion',
+      schedule: '0 9 * * *', // 9 AM UTC = 4 AM ET
+      command: `
+        SELECT net.http_post(
+          url := 'https://npvfusgiqvswmviohhqc.supabase.co/functions/v1/ingest-lineups',
+          headers := '{"Content-Type": "application/json", "Authorization": "Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}"}'::jsonb,
+          body := '{"force": false}'::jsonb
+        );
+      `
+    });
+
+    console.log('✅ Cron job scheduled successfully');
 
     return new Response(JSON.stringify({
       success: true,
-      timestamp: new Date().toISOString(),
-      monitor_result: monitorResult,
-      ingest_result: ingestResult,
-      prediction_result: predictionResult,
-      message: 'Lineup monitoring and prediction update completed'
+      message: 'Daily lineup ingestion scheduled for 4 AM ET',
+      schedule: '0 9 * * * (9 AM UTC / 4 AM ET)',
+      job_name: 'daily-lineup-ingestion'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
-    console.error('❌ Lineup scheduler failed:', error);
+    console.error('❌ Failed to schedule lineup ingestion:', error);
     
     return new Response(JSON.stringify({
       success: false,
