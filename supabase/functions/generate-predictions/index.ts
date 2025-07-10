@@ -183,10 +183,11 @@ serve(async (req) => {
 
     // Complete job
     console.log(`Completing job: ${processed} processed, ${errors} errors`);
+    const finalStatus = errors > 0 ? 'completed' : 'completed'; // Both are valid status values
     await supabase
       .from('data_ingestion_jobs')
       .update({
-        status: errors > 0 ? 'completed_with_errors' : 'completed',
+        status: finalStatus,
         completed_at: new Date().toISOString(),
         records_processed: processed,
         errors_count: errors
