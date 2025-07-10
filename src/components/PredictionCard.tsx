@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, TrendingDown, Info, Target, Clock } from 'lucide-react';
-import { format } from 'date-fns';
 import ExplanationModal from './ExplanationModal';
 
 interface GamePrediction {
@@ -60,6 +59,35 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
     return `${Math.round(prob * 100)}%`;
   };
 
+  const formatGameTime = (timeString?: string) => {
+    if (!timeString) return 'TBD';
+    
+    // Create a date object with today's date and the game time
+    const today = new Date();
+    const [hours, minutes] = timeString.split(':').map(Number);
+    const gameDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
+    
+    // Format in EST timezone
+    return gameDateTime.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    });
+  };
+
+  const formatPredictionDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    });
+  };
+
   const favoredTeam = prediction.home_win_probability > prediction.away_win_probability 
     ? homeTeam 
     : awayTeam;
@@ -90,7 +118,7 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
           {gameTime && (
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              {format(new Date(`2000-01-01T${gameTime}`), 'h:mm a')}
+              {formatGameTime(gameTime)} EST
             </div>
           )}
         </CardHeader>
@@ -186,7 +214,7 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
           )}
 
           <div className="text-xs text-muted-foreground">
-            Updated: {format(new Date(prediction.prediction_date), 'MMM dd, h:mm a')}
+            Updated: {formatPredictionDate(prediction.prediction_date)} EST
           </div>
         </CardContent>
       </Card>

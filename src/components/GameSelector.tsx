@@ -4,7 +4,6 @@ import { useGames, useIngestSchedule } from '@/hooks/useGames';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, RefreshCw, Download } from 'lucide-react';
-import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -105,9 +104,33 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     }
   };
 
+  const formatDisplayDate = (dateStr: string) => {
+    // Parse date as local date to avoid timezone shifts
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short',
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
   const formatGameTime = (game: Game) => {
-    if (!game.game_time) return '';
-    return format(new Date(`2000-01-01T${game.game_time}`), 'h:mm a');
+    if (!game.game_time) return 'TBD';
+    
+    // Create a date object with today's date and the game time
+    const today = new Date();
+    const [hours, minutes] = game.game_time.split(':').map(Number);
+    const gameDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
+    
+    // Format in EST timezone
+    return gameDateTime.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/New_York'
+    });
   };
 
   if (error) {
@@ -163,7 +186,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="flex items-center gap-2">
           <Calendar className="h-5 w-5" />
-          Games for {format(new Date(selectedDate), 'MMM dd, yyyy')}
+          Games for {formatDisplayDate(selectedDate)}
         </CardTitle>
         <div className="flex gap-2">
           <Button
@@ -244,7 +267,7 @@ const GameSelector: React.FC<GameSelectorProps> = ({
                       {game.away_team.abbreviation} @ {game.home_team.abbreviation}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      {formatGameTime(game)}
+                      {formatGameTime(game)} EST
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground capitalize">
