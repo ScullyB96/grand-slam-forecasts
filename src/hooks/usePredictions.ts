@@ -53,7 +53,7 @@ export const useGamePrediction = (gameId: number) => {
         .eq('game_id', gameId)
         .order('prediction_date', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') {
         console.error('Error fetching prediction:', error);

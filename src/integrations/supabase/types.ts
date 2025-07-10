@@ -14,7 +14,214 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      game_predictions: {
+        Row: {
+          away_win_probability: number
+          confidence_score: number | null
+          created_at: string | null
+          game_id: number
+          home_win_probability: number
+          id: number
+          key_factors: Json | null
+          over_probability: number | null
+          over_under_line: number | null
+          predicted_away_score: number | null
+          predicted_home_score: number | null
+          prediction_date: string | null
+          under_probability: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          away_win_probability: number
+          confidence_score?: number | null
+          created_at?: string | null
+          game_id: number
+          home_win_probability: number
+          id?: number
+          key_factors?: Json | null
+          over_probability?: number | null
+          over_under_line?: number | null
+          predicted_away_score?: number | null
+          predicted_home_score?: number | null
+          prediction_date?: string | null
+          under_probability?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          away_win_probability?: number
+          confidence_score?: number | null
+          created_at?: string | null
+          game_id?: number
+          home_win_probability?: number
+          id?: number
+          key_factors?: Json | null
+          over_probability?: number | null
+          over_under_line?: number | null
+          predicted_away_score?: number | null
+          predicted_home_score?: number | null
+          prediction_date?: string | null
+          under_probability?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_predictions_game_id_fkey"
+            columns: ["game_id"]
+            isOneToOne: false
+            referencedRelation: "games"
+            referencedColumns: ["game_id"]
+          },
+        ]
+      }
+      games: {
+        Row: {
+          away_score: number | null
+          away_team_id: number
+          created_at: string | null
+          game_date: string
+          game_id: number
+          game_time: string | null
+          home_score: number | null
+          home_team_id: number
+          id: number
+          status: string
+          updated_at: string | null
+          venue_name: string | null
+        }
+        Insert: {
+          away_score?: number | null
+          away_team_id: number
+          created_at?: string | null
+          game_date: string
+          game_id: number
+          game_time?: string | null
+          home_score?: number | null
+          home_team_id: number
+          id?: number
+          status?: string
+          updated_at?: string | null
+          venue_name?: string | null
+        }
+        Update: {
+          away_score?: number | null
+          away_team_id?: number
+          created_at?: string | null
+          game_date?: string
+          game_id?: number
+          game_time?: string | null
+          home_score?: number | null
+          home_team_id?: number
+          id?: number
+          status?: string
+          updated_at?: string | null
+          venue_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "games_away_team_id_fkey"
+            columns: ["away_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "games_home_team_id_fkey"
+            columns: ["home_team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_stats: {
+        Row: {
+          created_at: string | null
+          id: number
+          losses: number
+          runs_allowed: number
+          runs_scored: number
+          season: number
+          team_avg: number
+          team_era: number
+          team_id: number
+          team_obp: number
+          team_slg: number
+          updated_at: string | null
+          wins: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: number
+          losses?: number
+          runs_allowed?: number
+          runs_scored?: number
+          season: number
+          team_avg?: number
+          team_era?: number
+          team_id: number
+          team_obp?: number
+          team_slg?: number
+          updated_at?: string | null
+          wins?: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: number
+          losses?: number
+          runs_allowed?: number
+          runs_scored?: number
+          season?: number
+          team_avg?: number
+          team_era?: number
+          team_id?: number
+          team_obp?: number
+          team_slg?: number
+          updated_at?: string | null
+          wins?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_stats_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          abbreviation: string
+          city: string | null
+          created_at: string | null
+          division: string
+          id: number
+          league: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          abbreviation: string
+          city?: string | null
+          created_at?: string | null
+          division: string
+          id?: number
+          league: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          abbreviation?: string
+          city?: string | null
+          created_at?: string | null
+          division?: string
+          id?: number
+          league?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
