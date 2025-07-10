@@ -134,7 +134,7 @@ export async function getGameLineups(gamePk: number) {
 /**
  * Extract lineups from game live feed
  */
-export function extractLineupsFromGameFeed(gameData: any) {
+export function extractLineupsFromGameFeed(gameData: any, teamIdMap?: Map<number, number>) {
   const lineups: any[] = [];
   
   if (!gameData?.liveData?.boxscore?.teams) {
@@ -155,13 +155,19 @@ export function extractLineupsFromGameFeed(gameData: any) {
       return;
     }
 
+    // Map MLB team ID to our database team ID
+    const mlbTeamId = teamInfo.id;
+    const dbTeamId = teamIdMap?.get(mlbTeamId) || mlbTeamId;
+    
+    console.log(`Mapping team ${teamInfo.name} from MLB ID ${mlbTeamId} to DB ID ${dbTeamId}`);
+
     // Extract batting lineup
     teamData.batters.forEach((playerId: number, index: number) => {
       const playerInfo = teamData.players[`ID${playerId}`];
       if (playerInfo && index < 9) { // Only first 9 are batting order
         lineups.push({
           game_id: parseInt(gameInfo.pk),
-          team_id: teamInfo.id,
+          team_id: dbTeamId,
           lineup_type: 'batting',
           batting_order: index + 1,
           player_id: playerId,
@@ -178,7 +184,7 @@ export function extractLineupsFromGameFeed(gameData: any) {
     if (probablePitcher) {
       lineups.push({
         game_id: parseInt(gameInfo.pk),
-        team_id: teamInfo.id,
+        team_id: dbTeamId,
         lineup_type: 'pitching',
         batting_order: null,
         player_id: probablePitcher.id,
@@ -191,6 +197,22 @@ export function extractLineupsFromGameFeed(gameData: any) {
   });
 
   return lineups;
+}
+
+/**
+ * Create a mapping from MLB team IDs to database team IDs
+ */
+export function createTeamIdMapping(teams: any[]): Map<number, number> {
+  const mapping = new Map<number, number>();
+  
+  teams.forEach(team => {
+    if (team.team_id && team.id) {
+      mapping.set(team.team_id, team.id);
+    }
+  });
+  
+  console.log('Created team ID mapping:', Array.from(mapping.entries()));
+  return mapping;
 }
 
 /**

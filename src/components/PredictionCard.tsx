@@ -36,6 +36,7 @@ interface PredictionCardProps {
   homeTeam: Team;
   awayTeam: Team;
   gameTime?: string;
+  gameId?: number;
 }
 
 interface TeamWithId extends Team {
@@ -46,7 +47,8 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
   prediction,
   homeTeam,
   awayTeam,
-  gameTime
+  gameTime,
+  gameId
 }) => {
   const [showExplanation, setShowExplanation] = useState(false);
   const [activeTab, setActiveTab] = useState('prediction');
@@ -429,10 +431,9 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
             
             <TabsContent value="lineups" className="mt-6">
               <LineupDataTab 
-                gameId={prediction.game_id}
+                gameId={gameId || prediction.game_id}
                 homeTeam={homeTeam as TeamWithId}
                 awayTeam={awayTeam as TeamWithId}
-                prediction={prediction}
               />
             </TabsContent>
             

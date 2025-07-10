@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getGameLineups, extractLineupsFromGameFeed } from '../shared/mlb-api.ts';
+import { getGameLineups, extractLineupsFromGameFeed, createTeamIdMapping } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -58,6 +58,19 @@ serve(async (req) => {
       });
     }
 
+    // Get team mapping for MLB ID to database ID conversion
+    console.log('Fetching team mapping...');
+    const { data: teams, error: teamsError } = await supabase
+      .from('teams')
+      .select('id, team_id, name, abbreviation');
+
+    if (teamsError) {
+      console.error('Error fetching teams:', teamsError);
+      throw new Error('Failed to fetch teams: ' + teamsError.message);
+    }
+
+    const teamIdMapping = createTeamIdMapping(teams || []);
+
     let gamesChecked = 0;
     let gamesUpdated = 0;
     const updateResults: string[] = [];
@@ -101,7 +114,7 @@ serve(async (req) => {
         // Try to fetch official lineups from MLB Stats API
         console.log(`Attempting to fetch official lineups for game ${game.game_id}...`);
         const gameData = await getGameLineups(game.game_id);
-        const officialLineups = extractLineupsFromGameFeed(gameData);
+        const officialLineups = extractLineupsFromGameFeed(gameData, teamIdMapping);
 
         if (officialLineups.length > 0) {
           console.log(`✅ Found official lineups for game ${game.game_id}! Updating...`);

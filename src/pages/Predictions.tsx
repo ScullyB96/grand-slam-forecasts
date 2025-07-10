@@ -106,6 +106,7 @@ const Predictions = () => {
                 homeTeam={selectedGame.home_team}
                 awayTeam={selectedGame.away_team}
                 gameTime={selectedGame.game_time}
+                gameId={selectedGame.game_id}
               />
             ) : null}
           </div>
