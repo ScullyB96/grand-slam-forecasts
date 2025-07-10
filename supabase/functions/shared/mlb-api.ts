@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 export async function getSchedule(date: string) {
@@ -134,24 +135,47 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
       
       teamData.batters.forEach((playerId: number, index: number) => {
         const playerData = teamData.players?.[`ID${playerId}`]?.person;
+        const playerStats = teamData.players?.[`ID${playerId}`]?.stats;
+        
         if (playerData) {
           const battingOrder = index + 1;
           
           // Only include players in batting order 1-9
           if (battingOrder <= 9) {
+            // Try to get position from multiple sources
+            let position = 'DH'; // Default fallback
+            
+            // Try to get position from batting order info
+            if (teamData.battingOrder && teamData.battingOrder[playerId]) {
+              position = teamData.battingOrder[playerId].position?.abbreviation || position;
+            }
+            
+            // Try to get position from player stats
+            if (playerStats?.batting?.position?.abbreviation) {
+              position = playerStats.batting.position.abbreviation;
+            }
+            
+            // Try to get position from fielding stats
+            if (playerStats?.fielding?.position?.abbreviation) {
+              position = playerStats.fielding.position.abbreviation;
+            }
+
+            // Get handedness - batting side for batters
+            const handedness = playerData.batSide?.code || 'R';
+            
             lineups.push({
-              game_id: gameId, // Use the passed gameId parameter
+              game_id: gameId,
               team_id: dbTeamId,
               lineup_type: 'batting',
               batting_order: battingOrder,
               player_id: playerId,
               player_name: playerData.fullName || `Player ${playerId}`,
-              position: teamData.battingOrder?.[playerId]?.position?.abbreviation || 'DH',
-              handedness: playerData.batSide?.code || 'R',
+              position: position,
+              handedness: handedness,
               is_starter: true
             });
             
-            console.log(`    Added batter: ${playerData.fullName} (#${battingOrder})`);
+            console.log(`    Added batter: ${playerData.fullName} (#${battingOrder}) - ${position} - ${handedness}`);
           }
         } else {
           console.log(`    No player data found for batter ID ${playerId}`);
@@ -170,19 +194,22 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
         if (playerData) {
           const isStarter = teamData.pitchers.indexOf(playerId) === 0; // First pitcher is typically the starter
           
+          // Get handedness - pitching hand for pitchers
+          const handedness = playerData.pitchHand?.code || 'R';
+          
           lineups.push({
-            game_id: gameId, // Use the passed gameId parameter
+            game_id: gameId,
             team_id: dbTeamId,
             lineup_type: 'pitching',
             batting_order: null,
             player_id: playerId,
             player_name: playerData.fullName || `Player ${playerId}`,
             position: isStarter ? 'SP' : 'RP',
-            handedness: playerData.pitchHand?.code || 'R',
+            handedness: handedness,
             is_starter: isStarter
           });
           
-          console.log(`    Added pitcher: ${playerData.fullName} (${isStarter ? 'SP' : 'RP'})`);
+          console.log(`    Added pitcher: ${playerData.fullName} (${isStarter ? 'SP' : 'RP'}) - ${handedness}HP`);
         } else {
           console.log(`    No player data found for pitcher ID ${playerId}`);
         }
