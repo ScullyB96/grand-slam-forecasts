@@ -125,58 +125,76 @@ serve(async (req) => {
 
         let prediction;
 
-        // Try Monte Carlo simulation if we have sufficient lineup data
+        // Check if we have sufficient lineup data for Monte Carlo simulation
         if (homeLineup.length >= 9 && awayLineup.length >= 9) {
-          console.log(`Running Monte Carlo simulation for game ${game.game_id}...`);
-          
-          try {
-            // Call Monte Carlo simulation function
-            const { data: simulationResult, error: simError } = await supabase.functions.invoke('monte-carlo-simulation', {
-              body: { 
-                game_id: game.game_id,
-                iterations: 5000 // Reduced for performance
+          // Verify lineups are real (not mock data)
+          const hasRealHomeLineup = homeLineup.some(p => 
+            !p.player_name.includes('Player (') && 
+            !p.player_name.includes('Mock') && 
+            p.player_id < 600000
+          );
+          const hasRealAwayLineup = awayLineup.some(p => 
+            !p.player_name.includes('Player (') && 
+            !p.player_name.includes('Mock') && 
+            p.player_id < 600000
+          );
+
+          if (hasRealHomeLineup && hasRealAwayLineup) {
+            console.log(`Running Monte Carlo simulation for game ${game.game_id} with official lineups...`);
+            
+            try {
+              // Call Monte Carlo simulation function
+              const { data: simulationResult, error: simError } = await supabase.functions.invoke('monte-carlo-simulation', {
+                body: { 
+                  game_id: game.game_id,
+                  iterations: 5000 // Reduced for performance
+                }
+              });
+
+              if (simError) {
+                console.error(`Monte Carlo simulation failed for game ${game.game_id}:`, simError);
+                throw simError;
               }
-            });
 
-            if (simError) {
-              console.error(`Monte Carlo simulation failed for game ${game.game_id}:`, simError);
-              throw simError;
+              if (simulationResult?.success) {
+                console.log(`✅ Monte Carlo simulation completed for game ${game.game_id}`);
+                const stats = simulationResult.simulation_stats;
+                
+                prediction = {
+                  game_id: game.game_id,
+                  home_win_probability: stats.home_win_probability,
+                  away_win_probability: stats.away_win_probability,
+                  predicted_home_score: Math.round(stats.predicted_home_score),
+                  predicted_away_score: Math.round(stats.predicted_away_score),
+                  over_under_line: stats.over_under_line,
+                  over_probability: stats.over_probability,
+                  under_probability: stats.under_probability,
+                  confidence_score: stats.confidence_score,
+                  key_factors: {
+                    prediction_method: 'monte_carlo_simulation',
+                    sample_size: stats.sample_size,
+                    simulation_factors: simulationResult.factors,
+                    avg_total_runs: stats.predicted_total_runs,
+                    lineup_status: 'official'
+                  },
+                  prediction_date: new Date().toISOString(),
+                  last_updated: new Date().toISOString()
+                };
+              } else {
+                throw new Error('Monte Carlo simulation returned unsuccessful result');
+              }
+            } catch (mcError) {
+              console.error(`Monte Carlo simulation failed for game ${game.game_id}, falling back to basic prediction:`, mcError);
+              // Fall back to basic prediction
+              prediction = await calculateBasicPrediction(supabase, game, homeLineup, awayLineup);
             }
-
-            if (simulationResult?.success) {
-              console.log(`✅ Monte Carlo simulation completed for game ${game.game_id}`);
-              const stats = simulationResult.simulation_stats;
-              
-              prediction = {
-                game_id: game.game_id,
-                home_win_probability: stats.home_win_probability,
-                away_win_probability: stats.away_win_probability,
-                predicted_home_score: Math.round(stats.predicted_home_score),
-                predicted_away_score: Math.round(stats.predicted_away_score),
-                over_under_line: stats.over_under_line,
-                over_probability: stats.over_probability,
-                under_probability: stats.under_probability,
-                confidence_score: stats.confidence_score,
-                key_factors: {
-                  prediction_method: 'monte_carlo_simulation',
-                  sample_size: stats.sample_size,
-                  simulation_factors: simulationResult.factors,
-                  avg_total_runs: stats.predicted_total_runs
-                },
-                prediction_date: new Date().toISOString(),
-                last_updated: new Date().toISOString()
-              };
-            } else {
-              throw new Error('Monte Carlo simulation returned unsuccessful result');
-            }
-          } catch (mcError) {
-            console.error(`Monte Carlo simulation failed for game ${game.game_id}, falling back to basic prediction:`, mcError);
-            // Fall back to basic prediction
-            prediction = await calculateBasicPrediction(supabase, game, homeLineup, awayLineup);
+          } else {
+            console.log(`Game ${game.game_id} has mock lineups, using team-stats-only prediction`);
+            prediction = await calculateBasicPrediction(supabase, game, [], []);
           }
         } else {
-          console.log(`Insufficient lineup data for game ${game.game_id}, using basic prediction`);
-          prediction = await calculateBasicPrediction(supabase, game, homeLineup, awayLineup);
+          console.log(`Insufficient lineup data for game ${game.game_id}, using team-stats-only prediction`);
+          prediction = await calculateBasicPrediction(supabase, game, [], []);
         }
 
         console.log(`Saving prediction for game ${game.game_id}:`, prediction);

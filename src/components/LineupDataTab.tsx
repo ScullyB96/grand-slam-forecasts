@@ -34,18 +34,20 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
     return (
       <div className="text-center text-muted-foreground p-8">
         <Users className="h-16 w-16 mx-auto mb-4 opacity-50" />
-        <h3 className="text-lg font-semibold mb-2">No Lineup Data Available</h3>
-        <p>Official lineups haven't been released yet for this game.</p>
-        <p className="text-sm mt-2">We automatically check for official lineups every 15 minutes.</p>
+        <h3 className="text-lg font-semibold mb-2">Lineups Not Available</h3>
+        <p>Official lineups have not been released yet for this game.</p>
+        <p className="text-sm mt-2">Lineups are typically announced 1-2 hours before game time.</p>
+        <p className="text-sm mt-1 text-yellow-600">Check back closer to game time for official lineups.</p>
       </div>
     );
   }
 
-  // Check if lineups are official or projected
+  // Check if lineups are official or not available
   const hasOfficialLineups = lineups.some(lineup => 
     !lineup.player_name.includes('Player (') && 
     !lineup.player_name.includes('Mock') &&
-    !lineup.player_name.includes('Starting Pitcher (')
+    !lineup.player_name.includes('Starting Pitcher (') &&
+    lineup.player_id < 600000 // Real MLB player IDs are typically under this threshold
   );
 
   const LineupStatus = () => (
@@ -55,11 +57,13 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
           <>
             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
             <span className="text-green-700 dark:text-green-400 font-medium">Official Lineups Confirmed</span>
+            <span className="text-xs text-muted-foreground ml-2">• Updated from MLB API</span>
           </>
         ) : (
           <>
-            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-            <span className="text-yellow-700 dark:text-yellow-400 font-medium">Projected Lineups (Auto-updating every 15 minutes)</span>
+            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+            <span className="text-red-700 dark:text-red-400 font-medium">Lineups Not Yet Available</span>
+            <span className="text-xs text-muted-foreground ml-2">• Check back closer to game time</span>
           </>
         )}
       </div>

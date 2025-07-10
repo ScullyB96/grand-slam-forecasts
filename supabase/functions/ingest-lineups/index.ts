@@ -201,20 +201,19 @@ serve(async (req) => {
       }
     }
 
-    // STEP 3: Create mock lineups for ALL games that don't have official lineups yet
-    console.log('🔍 Step 3: Creating mock lineups for games without official lineups...');
+    // STEP 3: Log games without lineups (no mock creation)
+    console.log('🔍 Step 3: Checking games without official lineups...');
     
-    const gamesNeedingMockLineups = games.filter(game => 
+    const gamesWithoutLineups = games.filter(game => 
       !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
     );
 
-    console.log(`Creating mock lineups for ${gamesNeedingMockLineups.length} games without lineups`);
-
-    for (const game of gamesNeedingMockLineups) {
-      console.log(`Creating realistic mock lineup for game ${game.game_id}`);
-      const mockLineups = createRealisticTestLineupForGame(game.game_id, game);
-      lineups.push(...mockLineups);
-      console.log(`✅ Added ${mockLineups.length} realistic mock lineup entries for game ${game.game_id}`);
+    if (gamesWithoutLineups.length > 0) {
+      console.log(`⚠️ ${gamesWithoutLineups.length} games do not have official lineups yet:`);
+      gamesWithoutLineups.forEach(game => {
+        console.log(`  - Game ${game.game_id}: ${game.away_team?.name} @ ${game.home_team?.name}`);
+      });
+      console.log('These games will show "lineups not available" message to users.');
     }
 
     console.log(`Total lineups collected: ${lineups.length}`);
