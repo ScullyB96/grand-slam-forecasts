@@ -109,7 +109,7 @@ export async function getGameWeather(gamePk: number) {
 }
 
 /**
- * Get detailed schedule with game IDs
+ * Get detailed schedule with game IDs and probable pitchers
  */
 export async function getSchedule(date: string, sportId: number = 1) {
   console.log(`Fetching schedule for date ${date}`);
@@ -117,8 +117,80 @@ export async function getSchedule(date: string, sportId: number = 1) {
   return await makeMLBRequest('/schedule', {
     sportId,
     date,
-    hydrate: 'team,linescore'
+    hydrate: 'team,linescore,probablePitcher(note)'
   });
+}
+
+/**
+ * Get detailed game data including lineups and probable pitchers
+ */
+export async function getGameLineups(gamePk: number) {
+  console.log(`Fetching game lineups for game ${gamePk}`);
+  
+  const gameData = await makeMLBRequest(`/game/${gamePk}/feed/live`);
+  return gameData;
+}
+
+/**
+ * Extract lineups from game live feed
+ */
+export function extractLineupsFromGameFeed(gameData: any) {
+  const lineups: any[] = [];
+  
+  if (!gameData?.liveData?.boxscore?.teams) {
+    console.log('No boxscore data available yet');
+    return lineups;
+  }
+
+  const teams = gameData.liveData.boxscore.teams;
+  const gameInfo = gameData.gameData;
+  
+  // Process home and away teams
+  ['home', 'away'].forEach(teamType => {
+    const teamData = teams[teamType];
+    const teamInfo = gameInfo.teams[teamType];
+    
+    if (!teamData?.batters || teamData.batters.length === 0) {
+      console.log(`No ${teamType} batting lineup available yet`);
+      return;
+    }
+
+    // Extract batting lineup
+    teamData.batters.forEach((playerId: number, index: number) => {
+      const playerInfo = teamData.players[`ID${playerId}`];
+      if (playerInfo && index < 9) { // Only first 9 are batting order
+        lineups.push({
+          game_id: parseInt(gameInfo.pk),
+          team_id: teamInfo.id,
+          lineup_type: 'batting',
+          batting_order: index + 1,
+          player_id: playerId,
+          player_name: playerInfo.person.fullName,
+          position: playerInfo.position?.abbreviation || 'Unknown',
+          handedness: playerInfo.person.batSide?.code || 'R',
+          is_starter: true
+        });
+      }
+    });
+
+    // Extract probable pitcher
+    const probablePitcher = gameInfo.probablePitchers?.[teamType];
+    if (probablePitcher) {
+      lineups.push({
+        game_id: parseInt(gameInfo.pk),
+        team_id: teamInfo.id,
+        lineup_type: 'pitching',
+        batting_order: null,
+        player_id: probablePitcher.id,
+        player_name: probablePitcher.fullName,
+        position: 'SP',
+        handedness: probablePitcher.pitchHand?.code || 'R',
+        is_starter: true
+      });
+    }
+  });
+
+  return lineups;
 }
 
 /**
