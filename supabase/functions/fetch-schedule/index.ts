@@ -263,7 +263,14 @@ async function processGames(supabase: any, games: MLBGame[]) {
       }
       
       const gameDate = gameDateTime.toISOString().split('T')[0];
-      const gameTime = gameDateTime.toTimeString().split(' ')[0];
+      // Format time in EST/EDT timezone properly
+      const gameTime = gameDateTime.toLocaleTimeString('en-US', {
+        timeZone: 'America/New_York',
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
 
       // Map status with more robust handling
       let status = 'scheduled';

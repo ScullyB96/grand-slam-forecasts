@@ -189,18 +189,16 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   const formatGameTime = (game: Game) => {
     if (!game.game_time) return 'TBD';
     
-    // Create a date object with today's date and the game time
-    const today = new Date();
-    const [hours, minutes] = game.game_time.split(':').map(Number);
-    const gameDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
+    // Game time is already in EST from the edge function, just format it nicely
+    const [hours, minutes] = game.game_time.split(':');
+    const hour24 = parseInt(hours);
+    const minute = parseInt(minutes);
     
-    // Format in EST timezone
-    return gameDateTime.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'America/New_York'
-    });
+    // Convert to 12-hour format
+    const hour12 = hour24 === 0 ? 12 : hour24 > 12 ? hour24 - 12 : hour24;
+    const ampm = hour24 >= 12 ? 'PM' : 'AM';
+    
+    return `${hour12}:${minute.toString().padStart(2, '0')} ${ampm}`;
   };
 
   if (error) {
