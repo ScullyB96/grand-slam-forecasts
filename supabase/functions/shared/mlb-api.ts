@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 export async function getSchedule(date: string) {
@@ -14,10 +13,11 @@ export async function getGameLineups(gamePk: number) {
 }
 
 export async function getGameBoxscore(gamePk: number) {
-  const url = `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`;
+  const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`;
   const response = await fetch(url);
   const data = await response.json();
-  return data?.liveData?.boxscore;
+  console.log(`🔍 Raw boxscore data structure for game ${gamePk}:`, JSON.stringify(data, null, 2));
+  return data;
 }
 
 export function extractLineupsFromGameFeed(gameData: any, teamIdMapping: Map<number, number>): any[] {
@@ -129,93 +129,71 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
 
     console.log(`📋 Processing ${teamType} team: MLB ID ${mlbTeamId} -> DB ID ${dbTeamId}`);
 
-    // Process batting lineup
-    if (teamData.batters && Array.isArray(teamData.batters)) {
-      console.log(`  Processing ${teamData.batters.length} batters for ${teamType} team`);
+    // Use the lineup array from boxscore - this has the correct position and handedness data
+    if (teamData.lineup && Array.isArray(teamData.lineup)) {
+      console.log(`📋 Found lineup array with ${teamData.lineup.length} players for ${teamType} team`);
       
-      teamData.batters.forEach((playerId: number, index: number) => {
-        const playerData = teamData.players?.[`ID${playerId}`]?.person;
-        const playerStats = teamData.players?.[`ID${playerId}`]?.stats;
-        
-        if (playerData) {
-          const battingOrder = index + 1;
-          
-          // Only include players in batting order 1-9
-          if (battingOrder <= 9) {
-            // Try to get position from multiple sources
-            let position = 'DH'; // Default fallback
-            
-            // Try to get position from batting order info
-            if (teamData.battingOrder && teamData.battingOrder[playerId]) {
-              position = teamData.battingOrder[playerId].position?.abbreviation || position;
-            }
-            
-            // Try to get position from player stats
-            if (playerStats?.batting?.position?.abbreviation) {
-              position = playerStats.batting.position.abbreviation;
-            }
-            
-            // Try to get position from fielding stats
-            if (playerStats?.fielding?.position?.abbreviation) {
-              position = playerStats.fielding.position.abbreviation;
-            }
-
-            // Get handedness - batting side for batters
-            const handedness = playerData.batSide?.code || 'R';
-            
-            lineups.push({
-              game_id: gameId,
-              team_id: dbTeamId,
-              lineup_type: 'batting',
-              batting_order: battingOrder,
-              player_id: playerId,
-              player_name: playerData.fullName || `Player ${playerId}`,
-              position: position,
-              handedness: handedness,
-              is_starter: true
-            });
-            
-            console.log(`    Added batter: ${playerData.fullName} (#${battingOrder}) - ${position} - ${handedness}`);
-          }
-        } else {
-          console.log(`    No player data found for batter ID ${playerId}`);
+      // Log sample lineup entry to verify structure
+      if (teamData.lineup.length > 0) {
+        console.log('🔍 Sample lineup entry:', JSON.stringify(teamData.lineup[0], null, 2));
+      }
+      
+      teamData.lineup.forEach((player: any, index: number) => {
+        if (!player.person) {
+          console.log(`❌ No person data for lineup entry ${index}`);
+          return;
         }
+
+        const battingOrder = index + 1;
+        const playerId = player.person.id;
+        const playerName = player.person.fullName || `Player ${playerId}`;
+        
+        // Extract position from the correct field
+        const position = player.position?.code || player.position?.abbreviation || 'OF';
+        
+        // Extract batting handedness from the correct field
+        const handedness = player.person.batSide?.code || 'R';
+        
+        lineups.push({
+          game_id: gameId,
+          team_id: dbTeamId,
+          lineup_type: 'batting',
+          batting_order: battingOrder,
+          player_id: playerId,
+          player_name: playerName,
+          position: position,
+          handedness: handedness,
+          is_starter: true
+        });
+        
+        console.log(`✅ Added batter: ${playerName} (#${battingOrder}) - ${position} - ${handedness}`);
       });
     } else {
-      console.log(`  No batters array found for ${teamType} team`);
+      console.log(`❌ No lineup array found for ${teamType} team`);
     }
 
-    // Process pitching lineup
-    if (teamData.pitchers && Array.isArray(teamData.pitchers)) {
-      console.log(`  Processing ${teamData.pitchers.length} pitchers for ${teamType} team`);
+    // Process starting pitcher separately from probablePitchers
+    if (teamData.probablePitchers?.starter) {
+      const pitcher = teamData.probablePitchers.starter;
+      const playerId = pitcher.id;
+      const playerName = pitcher.fullName || `Player ${playerId}`;
+      const handedness = pitcher.pitchHand?.code || 'R';
       
-      teamData.pitchers.forEach((playerId: number) => {
-        const playerData = teamData.players?.[`ID${playerId}`]?.person;
-        if (playerData) {
-          const isStarter = teamData.pitchers.indexOf(playerId) === 0; // First pitcher is typically the starter
-          
-          // Get handedness - pitching hand for pitchers
-          const handedness = playerData.pitchHand?.code || 'R';
-          
-          lineups.push({
-            game_id: gameId,
-            team_id: dbTeamId,
-            lineup_type: 'pitching',
-            batting_order: null,
-            player_id: playerId,
-            player_name: playerData.fullName || `Player ${playerId}`,
-            position: isStarter ? 'SP' : 'RP',
-            handedness: handedness,
-            is_starter: isStarter
-          });
-          
-          console.log(`    Added pitcher: ${playerData.fullName} (${isStarter ? 'SP' : 'RP'}) - ${handedness}HP`);
-        } else {
-          console.log(`    No player data found for pitcher ID ${playerId}`);
-        }
+      lineups.push({
+        game_id: gameId,
+        team_id: dbTeamId,
+        lineup_type: 'pitching',
+        batting_order: null,
+        player_id: playerId,
+        player_name: playerName,
+        position: 'SP',
+        handedness: handedness,
+        is_starter: true
       });
+      
+      console.log(`✅ Added starter: ${playerName} (SP) - ${handedness}HP`);
     } else {
-      console.log(`  No pitchers array found for ${teamType} team`);
+      console.log(`⚠️ No probable starter found for ${teamType} team`);
     }
   });
 

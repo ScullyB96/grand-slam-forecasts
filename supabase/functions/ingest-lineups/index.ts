@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -110,7 +109,7 @@ serve(async (req) => {
       .update({ games_expected: mlbGames.length })
       .eq('id', jobId);
 
-    // Step 3: Process each game and fetch lineups
+    // Step 3: Process each game and fetch lineups using the corrected boxscore endpoint
     const results = [];
     const failedGames = [];
     let processedCount = 0;
@@ -147,8 +146,8 @@ serve(async (req) => {
           }
         }
 
-        // Fetch lineups from MLB API with enhanced debugging
-        console.log(`📥 Fetching lineup data for game ${gameId}`);
+        // Fetch lineups from the corrected boxscore endpoint
+        console.log(`📥 Fetching boxscore data for game ${gameId}`);
         const boxscoreData = await getGameBoxscore(gameId);
         
         if (!boxscoreData) {
@@ -160,26 +159,7 @@ serve(async (req) => {
           continue;
         }
 
-        // DEBUG: Log the raw structure to understand the JSON
-        console.log(`🔍 DEBUG - Raw boxscore structure for game ${gameId}:`);
-        console.log(`  - Has teams: ${!!boxscoreData.teams}`);
-        console.log(`  - Teams keys: ${boxscoreData.teams ? Object.keys(boxscoreData.teams) : 'none'}`);
-        
-        if (boxscoreData.teams?.home) {
-          console.log(`  - Home team keys: ${Object.keys(boxscoreData.teams.home)}`);
-          console.log(`  - Home batters array length: ${boxscoreData.teams.home.batters?.length || 0}`);
-          console.log(`  - Home pitchers array length: ${boxscoreData.teams.home.pitchers?.length || 0}`);
-          console.log(`  - Home players object keys count: ${boxscoreData.teams.home.players ? Object.keys(boxscoreData.teams.home.players).length : 0}`);
-        }
-        
-        if (boxscoreData.teams?.away) {
-          console.log(`  - Away team keys: ${Object.keys(boxscoreData.teams.away)}`);
-          console.log(`  - Away batters array length: ${boxscoreData.teams.away.batters?.length || 0}`);
-          console.log(`  - Away pitchers array length: ${boxscoreData.teams.away.pitchers?.length || 0}`);
-          console.log(`  - Away players object keys count: ${boxscoreData.teams.away.players ? Object.keys(boxscoreData.teams.away.players).length : 0}`);
-        }
-
-        // Extract lineups using the shared MLB API helper with enhanced debugging
+        // Extract lineups using the corrected boxscore extraction function
         const lineups = extractLineupsFromBoxscore(boxscoreData, gameId, teamIdMapping);
         
         console.log(`📊 Lineup extraction results for game ${gameId}:`);
