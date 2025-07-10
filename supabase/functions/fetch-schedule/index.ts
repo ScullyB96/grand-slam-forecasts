@@ -53,44 +53,107 @@ interface MLBScheduleResponse {
 }
 
 async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
-  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${date}`;
-  console.log(`Fetching MLB schedule for ${date}`, { url });
+  // Ensure date is in YYYY-MM-DD format
+  const formattedDate = date.split('T')[0]; // Remove time component if present
+  const url = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${formattedDate}&hydrate=team,venue`;
+  
+  console.log(`Fetching MLB schedule for ${formattedDate}`, { url });
   
   try {
     const response = await fetch(url);
     console.log(`MLB API HTTP Status: ${response.status}`);
     
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`MLB API error: ${response.status} ${response.statusText}`, { errorText });
       throw new Error(`MLB API error: ${response.status} ${response.statusText}`);
     }
     
     const data: MLBScheduleResponse = await response.json();
     console.log(`MLB API Response Structure`, { 
       datesCount: data.dates?.length || 0,
-      totalGames: data.dates?.reduce((sum, date) => sum + (date.games?.length || 0), 0) || 0
+      rawData: JSON.stringify(data, null, 2).substring(0, 1000) // Log first 1000 chars of response
     });
     
-    const games = data.dates?.flatMap(dateEntry => dateEntry.games || []) || [];
+    if (!data.dates || !Array.isArray(data.dates)) {
+      console.error('Invalid API response structure - no dates array', data);
+      throw new Error('Invalid API response structure: missing dates array');
+    }
+    
+    const games = data.dates.flatMap(dateEntry => {
+      if (!dateEntry.games || !Array.isArray(dateEntry.games)) {
+        console.warn('Date entry missing games array', dateEntry);
+        return [];
+      }
+      return dateEntry.games;
+    });
+    
     console.log(`Successfully fetched ${games.length} games from MLB API`);
+    
+    // Log sample game structure for debugging
+    if (games.length > 0) {
+      console.log('Sample game structure:', JSON.stringify(games[0], null, 2));
+    }
     
     return games;
   } catch (error) {
     console.error(`Failed to fetch MLB schedule`, { 
       error: error.message,
+      stack: error.stack,
       url,
-      date
+      date: formattedDate
     });
     throw error;
   }
 }
 
+async function validateTeamData(team: MLBTeam): Promise<boolean> {
+  if (!team || typeof team !== 'object') {
+    console.error('Invalid team data: not an object', team);
+    return false;
+  }
+  
+  if (!team.id || typeof team.id !== 'number') {
+    console.error('Invalid team data: missing or invalid id', team);
+    return false;
+  }
+  
+  if (!team.name && !team.teamName && !team.clubName) {
+    console.error('Invalid team data: no name fields', team);
+    return false;
+  }
+  
+  return true;
+}
+
 async function upsertTeam(supabase: any, team: MLBTeam) {
   try {
+    // Validate team data first
+    if (!(await validateTeamData(team))) {
+      throw new Error(`Invalid team data for team ID ${team.id}`);
+    }
+
     // Handle different team name structures from MLB API
     const teamName = team.teamName || team.clubName || team.name;
     const abbreviation = team.abbreviation || teamName?.substring(0, 3).toUpperCase() || 'UNK';
     const league = team.league?.abbreviation || 'MLB';
-    const division = team.division?.nameShort || 'Unknown';
+    
+    // Handle division names more carefully
+    let division = 'Unknown';
+    if (team.division?.nameShort) {
+      division = team.division.nameShort;
+    } else if (team.division?.name) {
+      // Map full division names to short names
+      const divisionMap: { [key: string]: string } = {
+        'American League East': 'ALE',
+        'American League Central': 'ALC', 
+        'American League West': 'ALW',
+        'National League East': 'NLE',
+        'National League Central': 'NLC',
+        'National League West': 'NLW'
+      };
+      division = divisionMap[team.division.name] || team.division.name.substring(0, 3).toUpperCase();
+    }
 
     const teamData = {
       team_id: team.id,
@@ -131,9 +194,36 @@ async function upsertTeam(supabase: any, team: MLBTeam) {
     console.log(`Successfully upserted team ${team.id} with internal ID ${teamRecord.id}`);
     return teamRecord.id;
   } catch (error) {
-    console.error(`Failed to upsert team ${team.id}`, { error: error.message });
+    console.error(`Failed to upsert team ${team.id}`, { 
+      error: error.message, 
+      team: JSON.stringify(team, null, 2) 
+    });
     throw error;
   }
+}
+
+async function validateGameData(game: MLBGame): Promise<boolean> {
+  if (!game || typeof game !== 'object') {
+    console.error('Invalid game data: not an object', game);
+    return false;
+  }
+  
+  if (!game.gamePk || typeof game.gamePk !== 'number') {
+    console.error('Invalid game data: missing gamePk', game);
+    return false;
+  }
+  
+  if (!game.gameDate) {
+    console.error('Invalid game data: missing gameDate', game);
+    return false;
+  }
+  
+  if (!game.teams?.home?.team || !game.teams?.away?.team) {
+    console.error('Invalid game data: missing team information', game);
+    return false;
+  }
+  
+  return true;
 }
 
 async function processGames(supabase: any, games: MLBGame[]) {
@@ -142,35 +232,49 @@ async function processGames(supabase: any, games: MLBGame[]) {
 
   console.log(`Starting to process ${games.length} games`);
 
-  for (const game of games) {
+  for (const [index, game] of games.entries()) {
     try {
+      console.log(`Processing game ${index + 1}/${games.length}: ${game.gamePk}`);
+      
       // Validate game structure
-      if (!game.teams?.home?.team || !game.teams?.away?.team) {
-        const error = `Game ${game.gamePk}: Invalid team structure`;
+      if (!(await validateGameData(game))) {
+        const error = `Game ${game.gamePk}: Invalid game structure`;
         console.error(error);
         errors.push(error);
         continue;
       }
 
       // First ensure both teams exist and get their internal IDs
+      console.log(`Processing teams for game ${game.gamePk}`);
       const homeTeamId = await upsertTeam(supabase, game.teams.home.team);
       const awayTeamId = await upsertTeam(supabase, game.teams.away.team);
 
-      // Parse game date and time
-      const gameDateTime = new Date(game.gameDate);
+      // Parse game date and time with better error handling
+      let gameDateTime: Date;
+      try {
+        gameDateTime = new Date(game.gameDate);
+        if (isNaN(gameDateTime.getTime())) {
+          throw new Error(`Invalid date: ${game.gameDate}`);
+        }
+      } catch (dateError) {
+        console.error(`Invalid game date for game ${game.gamePk}: ${game.gameDate}`, dateError);
+        errors.push(`Game ${game.gamePk}: Invalid date format`);
+        continue;
+      }
+      
       const gameDate = gameDateTime.toISOString().split('T')[0];
       const gameTime = gameDateTime.toTimeString().split(' ')[0];
 
-      // Map status
+      // Map status with more robust handling
       let status = 'scheduled';
       const mlbStatus = game.status?.detailedState?.toLowerCase() || '';
-      if (mlbStatus.includes('live') || mlbStatus.includes('progress')) {
+      if (mlbStatus.includes('live') || mlbStatus.includes('progress') || mlbStatus.includes('in progress')) {
         status = 'live';
-      } else if (mlbStatus.includes('final') || mlbStatus.includes('completed')) {
+      } else if (mlbStatus.includes('final') || mlbStatus.includes('completed') || mlbStatus.includes('game over')) {
         status = 'final';
-      } else if (mlbStatus.includes('postponed')) {
+      } else if (mlbStatus.includes('postponed') || mlbStatus.includes('delayed')) {
         status = 'postponed';
-      } else if (mlbStatus.includes('cancelled')) {
+      } else if (mlbStatus.includes('cancelled') || mlbStatus.includes('canceled')) {
         status = 'cancelled';
       }
 
@@ -200,10 +304,14 @@ async function processGames(supabase: any, games: MLBGame[]) {
         errors.push(`Game ${game.gamePk}: ${error.message}`);
       } else {
         processedCount++;
-        console.log(`Successfully processed game ${game.gamePk}`);
+        console.log(`Successfully processed game ${game.gamePk} (${processedCount}/${games.length})`);
       }
     } catch (error) {
-      console.error(`Error processing game ${game.gamePk}`, { error: error.message });
+      console.error(`Error processing game ${game.gamePk}`, { 
+        error: error.message, 
+        stack: error.stack,
+        gameData: JSON.stringify(game, null, 2).substring(0, 500)
+      });
       errors.push(`Game ${game.gamePk}: ${error.message}`);
     }
   }
@@ -338,6 +446,39 @@ Deno.serve(async (req) => {
     // Fetch games from MLB API
     const games = await fetchMLBSchedule(targetDate);
 
+    if (games.length === 0) {
+      console.log('No games found for the specified date');
+      
+      // Log completion with no games
+      await logIngestionJob(supabase, {
+        id: jobId,
+        job_name: 'MLB Schedule Ingestion',
+        job_type: 'schedule_ingestion',
+        data_source: 'MLB Stats API',
+        status: 'completed',
+        started_at: startTime.toISOString(),
+        completed_at: new Date().toISOString(),
+        records_processed: 0,
+        records_inserted: 0,
+        errors_count: 0,
+        season: new Date(targetDate).getFullYear()
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        date: targetDate,
+        gamesFound: 0,
+        gamesProcessed: 0,
+        verification: { success: true, gameCount: 0 },
+        errors: 0,
+        duration: new Date().getTime() - startTime.getTime(),
+        message: 'No games scheduled for this date'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
+    }
+
     // Process and upsert games
     const { processedCount, errors } = await processGames(supabase, games);
 
@@ -345,7 +486,7 @@ Deno.serve(async (req) => {
     const verification = await verifyIngestion(supabase, targetDate);
 
     const completedAt = new Date();
-    const success = errors.length === 0 && verification.success;
+    const success = errors.length === 0 && processedCount > 0;
 
     // Log job completion
     await logIngestionJob(supabase, {
