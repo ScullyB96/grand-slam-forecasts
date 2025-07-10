@@ -73,19 +73,12 @@ serve(async (req) => {
     const teamIdMapping = createTeamIdMapping(teams || []);
     console.log(`✅ Team mapping created with ${teamIdMapping.size} teams`);
 
-    // Step 2: Get games from our database for the target date
-    console.log('📅 Step 2: Fetching games from database...');
-    const { data: games, error: gamesError } = await supabase
-      .from('games')
-      .select('game_id, home_team_id, away_team_id')
-      .eq('game_date', targetDate);
-
-    if (gamesError) {
-      throw new Error('Failed to fetch games: ' + gamesError.message);
-    }
-
-    if (!games || games.length === 0) {
-      console.log(`No games found in database for ${targetDate}`);
+    // Step 2: Get MLB schedule for the target date to get valid game IDs
+    console.log('📅 Step 2: Fetching MLB schedule...');
+    const schedule = await getSchedule(targetDate);
+    
+    if (!schedule?.dates?.[0]?.games || schedule.dates[0].games.length === 0) {
+      console.log(`No games found in MLB schedule for ${targetDate}`);
       
       await supabase
         .from('lineup_ingestion_jobs')
@@ -99,7 +92,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         success: true,
-        message: `No games found in database for ${targetDate}`,
+        message: `No games found in MLB schedule for ${targetDate}`,
         date: targetDate,
         games_processed: 0,
         games_expected: 0
@@ -108,12 +101,13 @@ serve(async (req) => {
       });
     }
 
-    console.log(`✅ Found ${games.length} games in database for ${targetDate}`);
+    const mlbGames = schedule.dates[0].games;
+    console.log(`✅ Found ${mlbGames.length} games in MLB schedule for ${targetDate}`);
 
     // Update job with expected games count
     await supabase
       .from('lineup_ingestion_jobs')
-      .update({ games_expected: games.length })
+      .update({ games_expected: mlbGames.length })
       .eq('id', jobId);
 
     // Step 3: Process each game and fetch lineups
@@ -121,20 +115,21 @@ serve(async (req) => {
     const failedGames = [];
     let processedCount = 0;
 
-    for (const game of games) {
+    for (const mlbGame of mlbGames) {
       try {
-        console.log(`🏈 Processing game ${game.game_id}`);
+        const gameId = mlbGame.gamePk;
+        console.log(`🏈 Processing game ${gameId}`);
 
         // Check if lineups already exist (unless force refresh)
         if (!forceRefresh) {
           const { data: existingLineups } = await supabase
             .from('game_lineups')
             .select('id')
-            .eq('game_id', game.game_id)
+            .eq('game_id', gameId)
             .limit(1);
 
           if (existingLineups && existingLineups.length > 0) {
-            console.log(`⏭️ Lineups already exist for game ${game.game_id}, skipping`);
+            console.log(`⏭️ Lineups already exist for game ${gameId}, skipping`);
             processedCount++;
             continue;
           }
@@ -142,27 +137,31 @@ serve(async (req) => {
 
         // Clear existing lineups if force refresh
         if (forceRefresh) {
-          await supabase
+          const { error: deleteError } = await supabase
             .from('game_lineups')
             .delete()
-            .eq('game_id', game.game_id);
+            .eq('game_id', gameId);
+          
+          if (deleteError) {
+            console.error(`Error deleting existing lineups for game ${gameId}:`, deleteError);
+          }
         }
 
         // Fetch lineups from MLB API with enhanced debugging
-        console.log(`📥 Fetching lineup data for game ${game.game_id}`);
-        const boxscoreData = await getGameBoxscore(game.game_id);
+        console.log(`📥 Fetching lineup data for game ${gameId}`);
+        const boxscoreData = await getGameBoxscore(gameId);
         
         if (!boxscoreData) {
-          console.log(`❌ No boxscore data available for game ${game.game_id}`);
+          console.log(`❌ No boxscore data available for game ${gameId}`);
           failedGames.push({
-            gamePk: game.game_id,
+            gamePk: gameId,
             error: 'No boxscore data available'
           });
           continue;
         }
 
         // DEBUG: Log the raw structure to understand the JSON
-        console.log(`🔍 DEBUG - Raw boxscore structure for game ${game.game_id}:`);
+        console.log(`🔍 DEBUG - Raw boxscore structure for game ${gameId}:`);
         console.log(`  - Has teams: ${!!boxscoreData.teams}`);
         console.log(`  - Teams keys: ${boxscoreData.teams ? Object.keys(boxscoreData.teams) : 'none'}`);
         
@@ -181,9 +180,9 @@ serve(async (req) => {
         }
 
         // Extract lineups using the shared MLB API helper with enhanced debugging
-        const lineups = extractLineupsFromBoxscore(boxscoreData, null, teamIdMapping);
+        const lineups = extractLineupsFromBoxscore(boxscoreData, gameId, teamIdMapping);
         
-        console.log(`📊 Lineup extraction results for game ${game.game_id}:`);
+        console.log(`📊 Lineup extraction results for game ${gameId}:`);
         console.log(`  - Total lineups extracted: ${lineups.length}`);
         const battingLineups = lineups.filter(l => l.lineup_type === 'batting');
         const pitchingLineups = lineups.filter(l => l.lineup_type === 'pitching');
@@ -195,24 +194,46 @@ serve(async (req) => {
         }
         
         if (lineups.length === 0) {
-          console.log(`⚠️ No lineup data extracted for game ${game.game_id}`);
+          console.log(`⚠️ No lineup data extracted for game ${gameId}`);
           failedGames.push({
-            gamePk: game.game_id,
+            gamePk: gameId,
             error: 'No lineup data could be extracted'
           });
           continue;
         }
 
+        // Validate that all lineups have the correct game_id
+        const validLineups = lineups.filter(lineup => {
+          if (!lineup.game_id || lineup.game_id !== gameId) {
+            console.error(`❌ Invalid game_id for lineup: expected ${gameId}, got ${lineup.game_id}`);
+            return false;
+          }
+          return true;
+        });
+
+        if (validLineups.length !== lineups.length) {
+          console.error(`❌ Found ${lineups.length - validLineups.length} lineups with invalid game_id for game ${gameId}`);
+        }
+
+        if (validLineups.length === 0) {
+          console.log(`❌ No valid lineups for game ${gameId}`);
+          failedGames.push({
+            gamePk: gameId,
+            error: 'No valid lineups (game_id mismatch)'
+          });
+          continue;
+        }
+
         // Insert lineups into game_lineups table
-        console.log(`💾 Inserting ${lineups.length} lineup entries for game ${game.game_id}`);
+        console.log(`💾 Inserting ${validLineups.length} lineup entries for game ${gameId}`);
         const { error: insertError } = await supabase
           .from('game_lineups')
-          .insert(lineups);
+          .insert(validLineups);
 
         if (insertError) {
-          console.error(`❌ Error inserting lineups for game ${game.game_id}:`, insertError);
+          console.error(`❌ Error inserting lineups for game ${gameId}:`, insertError);
           failedGames.push({
-            gamePk: game.game_id,
+            gamePk: gameId,
             error: `Insert error: ${insertError.message}`
           });
           continue;
@@ -220,19 +241,19 @@ serve(async (req) => {
 
         processedCount++;
         results.push({
-          gamePk: game.game_id,
-          lineupsInserted: lineups.length,
+          gamePk: gameId,
+          lineupsInserted: validLineups.length,
           battingLineups: battingLineups.length,
           pitchingLineups: pitchingLineups.length,
           status: 'success'
         });
 
-        console.log(`✅ Successfully processed game ${game.game_id} with ${lineups.length} lineup entries (${battingLineups.length} batting, ${pitchingLineups.length} pitching)`);
+        console.log(`✅ Successfully processed game ${gameId} with ${validLineups.length} lineup entries (${battingLineups.length} batting, ${pitchingLineups.length} pitching)`);
 
       } catch (error) {
-        console.error(`❌ Error processing game ${game.game_id}:`, error);
+        console.error(`❌ Error processing game ${mlbGame.gamePk}:`, error);
         failedGames.push({
-          gamePk: game.game_id,
+          gamePk: mlbGame.gamePk,
           error: error.message
         });
       }
@@ -255,13 +276,13 @@ serve(async (req) => {
     const summary = {
       success: true,
       date: targetDate,
-      games_expected: games.length,
+      games_expected: mlbGames.length,
       games_processed: processedCount,
       games_failed: failedGames.length,
       failed_games: failedGames,
       job_id: jobId,
       results: results,
-      message: `Processed ${processedCount}/${games.length} games for ${targetDate}`
+      message: `Processed ${processedCount}/${mlbGames.length} games for ${targetDate}`
     };
 
     console.log('🎉 Lineup ingestion completed:', summary);
