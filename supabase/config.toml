@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.ingest-schedule]
 verify_jwt = false
+
+[functions.fetch-schedule]
+verify_jwt = false

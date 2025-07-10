@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { useGames, useIngestSchedule } from '@/hooks/useGames';
+import { useGames, useFetchSchedule } from '@/hooks/useGames';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, RefreshCw, Download } from 'lucide-react';
@@ -37,32 +37,32 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   selectedGameId
 }) => {
   const { data: games, isLoading, error, refetch } = useGames(selectedDate);
-  const { refetch: triggerIngestion, isFetching: isIngesting } = useIngestSchedule();
+  const { refetch: triggerFetch, isFetching: isFetching } = useFetchSchedule();
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
 
-  const handleIngestSchedule = async () => {
+  const handleFetchSchedule = async () => {
     try {
-      console.log('Triggering schedule ingestion...');
-      const result = await triggerIngestion();
+      console.log('Triggering schedule fetch...');
+      const result = await triggerFetch();
       
       if (result.data?.success) {
         toast({
           title: "Schedule Updated",
-          description: `Ingested ${result.data.gamesProcessed} games for ${selectedDate}`
+          description: `Fetched ${result.data.gamesProcessed} games for ${selectedDate}`
         });
         
-        // Refresh games after ingestion
+        // Refresh games after fetch
         setTimeout(() => {
           refetch();
         }, 1000);
       } else {
-        throw new Error(result.data?.error || 'Ingestion failed');
+        throw new Error(result.data?.error || 'Fetch failed');
       }
     } catch (error) {
-      console.error('Error ingesting schedule:', error);
+      console.error('Error fetching schedule:', error);
       toast({
-        title: "Ingestion Failed",
+        title: "Fetch Failed",
         description: "Failed to fetch schedule from MLB API. Please try again.",
         variant: "destructive"
       });
@@ -151,9 +151,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               <RefreshCw className="h-4 w-4 mr-2" />
               Retry
             </Button>
-            <Button variant="outline" onClick={handleIngestSchedule} disabled={isIngesting}>
+            <Button variant="outline" onClick={handleFetchSchedule} disabled={isFetching}>
               <Download className="h-4 w-4 mr-2" />
-              {isIngesting ? 'Fetching...' : 'Fetch Schedule'}
+              {isFetching ? 'Fetching...' : 'Fetch Schedule'}
             </Button>
           </div>
         </CardContent>
@@ -200,11 +200,11 @@ const GameSelector: React.FC<GameSelectorProps> = ({
           <Button
             variant="secondary"
             size="sm"
-            onClick={handleIngestSchedule}
-            disabled={isIngesting}
+            onClick={handleFetchSchedule}
+            disabled={isFetching}
           >
             <Download className="h-4 w-4 mr-2" />
-            {isIngesting ? 'Fetching...' : 'Fetch Schedule'}
+            {isFetching ? 'Fetching...' : 'Fetch Schedule'}
           </Button>
           <Button
             variant="default"
@@ -236,19 +236,19 @@ const GameSelector: React.FC<GameSelectorProps> = ({
         {!games || games.length === 0 ? (
           <div className="text-center py-8 space-y-4">
             <div className="text-muted-foreground">
-              No games found for this date
+              No games scheduled for this date
             </div>
             <div className="text-sm text-muted-foreground">
               Try fetching the latest schedule from MLB
             </div>
             <Button 
               variant="outline" 
-              onClick={handleIngestSchedule}
-              disabled={isIngesting}
+              onClick={handleFetchSchedule}
+              disabled={isFetching}
               className="mt-2"
             >
               <Download className="h-4 w-4 mr-2" />
-              {isIngesting ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
+              {isFetching ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
             </Button>
           </div>
         ) : (

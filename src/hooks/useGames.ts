@@ -70,23 +70,23 @@ export const useTodaysGames = () => {
   return useGames(today);
 };
 
-// Hook to trigger schedule ingestion
-export const useIngestSchedule = () => {
+// Hook to trigger schedule fetch
+export const useFetchSchedule = () => {
   return useQuery({
-    queryKey: ['ingest-schedule'],
+    queryKey: ['fetch-schedule'],
     queryFn: async () => {
-      console.log('Triggering schedule ingestion...');
+      console.log('Triggering schedule fetch...');
       
-      const { data, error } = await supabase.functions.invoke('ingest-schedule', {
+      const { data, error } = await supabase.functions.invoke('fetch-schedule', {
         body: { date: new Date().toISOString().split('T')[0] }
       });
 
       if (error) {
-        console.error('Error triggering schedule ingestion:', error);
+        console.error('Error triggering schedule fetch:', error);
         throw error;
       }
 
-      console.log('Schedule ingestion response:', data);
+      console.log('Schedule fetch response:', data);
       return data;
     },
     enabled: false, // Only run when manually triggered
