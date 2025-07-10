@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getGameLineups, extractLineupsFromGameFeed, createTeamIdMapping } from '../shared/mlb-api.ts';
+import { getGameLineups, extractLineupsFromGameFeed, createTeamIdMapping, getSchedule } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -150,8 +150,8 @@ serve(async (req) => {
       }
     }
 
-    // Try to get official lineups from MLB Stats API first
-    console.log('Attempting to fetch official lineups from MLB Stats API...');
+    // STEP 1: Try to get official lineups from MLB Stats API first  
+    console.log('🔍 Step 1: Attempting to fetch official lineups from MLB Stats API...');
     let lineups: any[] = [];
     let officialLineupsFound = 0;
     
@@ -175,39 +175,46 @@ serve(async (req) => {
 
     console.log(`Official lineups found for ${officialLineupsFound}/${games.length} games`);
 
-    // For testing: Add specific lineup for games that need them
-    const testGames = [777165, 777168, 777166]; // Add Cubs vs Twins game
-    for (const gameId of testGames) {
-      if (games.some(game => game.game_id === gameId)) {
-        console.log(`Adding test lineup for game ${gameId}`);
-        const testLineups = createTestLineupForGame(gameId, games.find(g => g.game_id === gameId));
-        lineups.push(...testLineups);
-        console.log(`✅ Added ${testLineups.length} test lineup entries for game ${gameId}`);
-      }
-    }
-
-    // For games without official lineups, we'll only use probable pitchers from MLB API
+    // STEP 2: For games without official lineups, fetch probable pitchers from schedule API
+    console.log('🔍 Step 2: Fetching probable pitchers for games without official lineups...');
+    
     if (officialLineupsFound < games.length) {
-      console.log('Adding probable pitchers for remaining games...');
-      
-      const gamesNeedingLineups = games.filter(game => 
+      const gamesNeedingPitchers = games.filter(game => 
         !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'pitching')
       );
 
-      for (const game of gamesNeedingLineups) {
+      for (const game of gamesNeedingPitchers) {
         try {
-          // Fetch probable pitchers from MLB API schedule
-          const scheduleData = await fetchGameSchedule(game.game_id);
-          const probablePitchers = extractProbablePitchersFromSchedule(scheduleData, game);
+          // Fetch probable pitchers from MLB schedule API
+          const scheduleData = await getSchedule(targetDate);
+          const probablePitchers = extractProbablePitchersFromSchedule(scheduleData, game, teamIdMapping);
           
           if (probablePitchers.length > 0) {
             lineups.push(...probablePitchers);
             console.log(`✅ Added probable pitchers for game ${game.game_id}`);
+          } else {
+            console.log(`⚠️ No probable pitchers found for game ${game.game_id}`);
           }
         } catch (error) {
           console.error(`Failed to get probable pitchers for game ${game.game_id}:`, error);
         }
       }
+    }
+
+    // STEP 3: Only create real-looking test lineups for test games when absolutely necessary
+    console.log('🔍 Step 3: Creating high-quality mock lineups only for test/demo games...');
+    
+    const allowedTestGames = [777165, 777166, 777168]; // Limited test games
+    const gamesNeedingMockLineups = games.filter(game => 
+      allowedTestGames.includes(game.game_id) && 
+      !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
+    );
+
+    for (const game of gamesNeedingMockLineups) {
+      console.log(`Creating realistic mock lineup for test game ${game.game_id}`);
+      const mockLineups = createRealisticTestLineupForGame(game.game_id, game);
+      lineups.push(...mockLineups);
+      console.log(`✅ Added ${mockLineups.length} realistic mock lineup entries for game ${game.game_id}`);
     }
 
     console.log(`Total lineups collected: ${lineups.length}`);
@@ -310,21 +317,79 @@ serve(async (req) => {
   }
 });
 
-// Create test lineup for any game
-function createTestLineupForGame(gameId: number, gameData: any) {
+// Extract probable pitchers from schedule data
+function extractProbablePitchersFromSchedule(scheduleData: any, game: any, teamIdMapping: Map<number, number>) {
   const lineups: any[] = [];
   
-  // Special case for Mets vs Orioles game (777165)
-  if (gameId === 777165) {
-    return createMetsOriolesTestLineup();
+  if (!scheduleData?.dates?.[0]?.games) {
+    return lineups;
   }
+
+  // Find the specific game in the schedule
+  const scheduleGame = scheduleData.dates[0].games.find((g: any) => g.gamePk === game.game_id);
+  
+  if (!scheduleGame) {
+    console.log(`Game ${game.game_id} not found in schedule data`);
+    return lineups;
+  }
+
+  // Extract probable pitchers
+  if (scheduleGame.teams?.home?.probablePitcher) {
+    const homePitcher = scheduleGame.teams.home.probablePitcher;
+    const homeTeamId = teamIdMapping.get(scheduleGame.teams.home.team.id);
+    
+    if (homeTeamId) {
+      lineups.push({
+        game_id: game.game_id,
+        team_id: homeTeamId,
+        lineup_type: 'pitching',
+        batting_order: null,
+        player_id: homePitcher.id,
+        player_name: homePitcher.fullName,
+        position: 'SP',
+        handedness: homePitcher.pitchHand?.code || 'R',
+        is_starter: true
+      });
+    }
+  }
+
+  if (scheduleGame.teams?.away?.probablePitcher) {
+    const awayPitcher = scheduleGame.teams.away.probablePitcher;
+    const awayTeamId = teamIdMapping.get(scheduleGame.teams.away.team.id);
+    
+    if (awayTeamId) {
+      lineups.push({
+        game_id: game.game_id,
+        team_id: awayTeamId,
+        lineup_type: 'pitching',
+        batting_order: null,
+        player_id: awayPitcher.id,
+        player_name: awayPitcher.fullName,
+        position: 'SP',
+        handedness: awayPitcher.pitchHand?.code || 'R',
+        is_starter: true
+      });
+    }
+  }
+
+  return lineups;
+}
+
+// Create realistic test lineup for specific games (Cubs vs Twins example)
+function createRealisticTestLineupForGame(gameId: number, gameData: any) {
+  const lineups: any[] = [];
   
   // Special case for Cubs vs Twins game (777166)
   if (gameId === 777166) {
     return createCubsTwinsTestLineup();
   }
   
-  // Generic test lineup creation for other games
+  // Special case for Mets vs Orioles game (777165)
+  if (gameId === 777165) {
+    return createMetsOriolesTestLineup();
+  }
+  
+  // Generic test lineup for other allowed games
   const homeTeamId = gameData.home_team_id;
   const awayTeamId = gameData.away_team_id;
   const homeTeamAbbr = gameData.home_team?.abbreviation || 'HOME';
@@ -373,7 +438,100 @@ function createTestLineupForGame(gameId: number, gameData: any) {
     });
   });
   
-  console.log(`Created test lineup for game ${gameId}: ${lineups.length} entries`);
+  console.log(`Created realistic test lineup for game ${gameId}: ${lineups.length} entries`);
+  return lineups;
+}
+
+// Create test lineup for Cubs vs Twins game (777166)
+function createCubsTwinsTestLineup() {
+  const gameId = 777166;
+  const cubsTeamId = 127; // CHC (database ID)
+  const twinsTeamId = 126; // MIN (database ID)
+  
+  const lineups: any[] = [];
+  
+  // Cubs lineup (away team) - typical Cubs batting order
+  const cubsLineup = [
+    { name: 'N. Hoerner', position: '2B', handedness: 'R' },
+    { name: 'C. Bellinger', position: 'CF', handedness: 'L' },
+    { name: 'I. Paredes', position: '3B', handedness: 'R' },
+    { name: 'S. Suzuki', position: 'RF', handedness: 'R' },
+    { name: 'P. Crow-Armstrong', position: 'LF', handedness: 'L' },
+    { name: 'D. Swanson', position: 'SS', handedness: 'R' },
+    { name: 'M. Busch', position: '1B', handedness: 'L' },
+    { name: 'M. Amaya', position: 'C', handedness: 'R' },
+    { name: 'C. Rea', position: 'DH', handedness: 'R' }
+  ];
+  
+  // Twins lineup (home team) - typical Twins batting order
+  const twinsLineup = [
+    { name: 'C. Correa', position: 'SS', handedness: 'R' },
+    { name: 'R. Lewis Jr.', position: '3B', handedness: 'R' },
+    { name: 'M. Wallner', position: 'LF', handedness: 'L' },
+    { name: 'T. Larnach', position: 'RF', handedness: 'L' },
+    { name: 'W. Castro', position: '2B', handedness: 'S' },
+    { name: 'C. Julien', position: '1B', handedness: 'R' },
+    { name: 'B. Lee', position: 'CF', handedness: 'L' },
+    { name: 'R. Jeffers', position: 'C', handedness: 'R' },
+    { name: 'E. Farmer', position: 'DH', handedness: 'R' }
+  ];
+  
+  // Add Cubs batting lineup
+  cubsLineup.forEach((player, index) => {
+    lineups.push({
+      game_id: gameId,
+      team_id: cubsTeamId,
+      lineup_type: 'batting',
+      batting_order: index + 1,
+      player_id: 650000 + index,
+      player_name: player.name,
+      position: player.position,
+      handedness: player.handedness,
+      is_starter: true
+    });
+  });
+  
+  // Add Twins batting lineup
+  twinsLineup.forEach((player, index) => {
+    lineups.push({
+      game_id: gameId,
+      team_id: twinsTeamId,
+      lineup_type: 'batting',
+      batting_order: index + 1,
+      player_id: 650100 + index,
+      player_name: player.name,
+      position: player.position,
+      handedness: player.handedness,
+      is_starter: true
+    });
+  });
+  
+  // Add probable pitchers
+  lineups.push({
+    game_id: gameId,
+    team_id: cubsTeamId,
+    lineup_type: 'pitching',
+    batting_order: null,
+    player_id: 650200,
+    player_name: 'Shota Imanaga',
+    position: 'SP',
+    handedness: 'L',
+    is_starter: true
+  });
+  
+  lineups.push({
+    game_id: gameId,
+    team_id: twinsTeamId,
+    lineup_type: 'pitching',
+    batting_order: null,
+    player_id: 650201,
+    player_name: 'Pablo López',
+    position: 'SP',
+    handedness: 'R',
+    is_starter: true
+  });
+  
+  console.log(`Created realistic Cubs vs Twins lineup: ${lineups.length} entries`);
   return lineups;
 }
 
@@ -466,160 +624,6 @@ function createMetsOriolesTestLineup() {
     is_starter: true
   });
   
-  console.log(`Created test lineup for Mets vs Orioles: ${lineups.length} entries`);
-  return lineups;
-}
-
-// Create test lineup for Cubs vs Twins game (777166)
-function createCubsTwinsTestLineup() {
-  const gameId = 777166;
-  const cubsTeamId = 127; // CHC (database ID)
-  const twinsTeamId = 126; // MIN (database ID)
-  
-  const lineups: any[] = [];
-  
-  // Cubs lineup (away team) - typical Cubs batting order
-  const cubsLineup = [
-    { name: 'N. Hoerner', position: '2B', handedness: 'R' },
-    { name: 'C. Bellinger', position: 'CF', handedness: 'L' },
-    { name: 'I. Paredes', position: '3B', handedness: 'R' },
-    { name: 'S. Suzuki', position: 'RF', handedness: 'R' },
-    { name: 'P. Crow-Armstrong', position: 'LF', handedness: 'L' },
-    { name: 'D. Swanson', position: 'SS', handedness: 'R' },
-    { name: 'M. Busch', position: '1B', handedness: 'L' },
-    { name: 'M. Amaya', position: 'C', handedness: 'R' },
-    { name: 'C. Rea', position: 'DH', handedness: 'R' }
-  ];
-  
-  // Twins lineup (home team) - typical Twins batting order
-  const twinsLineup = [
-    { name: 'C. Correa', position: 'SS', handedness: 'R' },
-    { name: 'R. Lewis Jr.', position: '3B', handedness: 'R' },
-    { name: 'M. Wallner', position: 'LF', handedness: 'L' },
-    { name: 'T. Larnach', position: 'RF', handedness: 'L' },
-    { name: 'W. Castro', position: '2B', handedness: 'S' },
-    { name: 'C. Julien', position: '1B', handedness: 'L' },
-    { name: 'B. Lee', position: 'CF', handedness: 'L' },
-    { name: 'R. Jeffers', position: 'C', handedness: 'R' },
-    { name: 'C. Paddack', position: 'DH', handedness: 'R' }
-  ];
-  
-  // Add Cubs batting lineup
-  cubsLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: cubsTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 777000 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add Twins batting lineup
-  twinsLineup.forEach((player, index) => {
-    lineups.push({
-      game_id: gameId,
-      team_id: twinsTeamId,
-      lineup_type: 'batting',
-      batting_order: index + 1,
-      player_id: 777100 + index,
-      player_name: player.name,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: true
-    });
-  });
-  
-  // Add starting pitchers
-  lineups.push({
-    game_id: gameId,
-    team_id: cubsTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 777200,
-    player_name: 'Colin Rea',
-    position: 'SP',
-    handedness: 'R',
-    is_starter: true
-  });
-  
-  lineups.push({
-    game_id: gameId,
-    team_id: twinsTeamId,
-    lineup_type: 'pitching',
-    batting_order: null,
-    player_id: 777201,
-    player_name: 'Chris Paddack',
-    position: 'SP',
-    handedness: 'R',
-    is_starter: true
-  });
-  
-  console.log(`Created test lineup for Cubs vs Twins: ${lineups.length} entries`);
-  return lineups;
-}
-
-// Fetch game schedule to get probable pitchers
-async function fetchGameSchedule(gameId: number) {
-  try {
-    console.log(`Fetching schedule data for game ${gameId}`);
-    const url = `https://statsapi.mlb.com/api/v1/schedule?gamePk=${gameId}&hydrate=probablePitcher`;
-    
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`MLB API error: ${response.status}`);
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error(`Failed to fetch schedule for game ${gameId}:`, error);
-    throw error;
-  }
-}
-
-// Extract probable pitchers from schedule data
-function extractProbablePitchersFromSchedule(scheduleData: any, game: any) {
-  const lineups: any[] = [];
-  
-  try {
-    const gameData = scheduleData.dates?.[0]?.games?.[0];
-    
-    if (gameData?.teams?.away?.probablePitcher) {
-      const pitcher = gameData.teams.away.probablePitcher;
-      lineups.push({
-        game_id: game.game_id,
-        team_id: game.away_team_id,
-        lineup_type: 'pitching',
-        batting_order: null,
-        player_id: pitcher.id,
-        player_name: pitcher.fullName,
-        position: 'SP',
-        handedness: pitcher.pitchHand?.code || 'R',
-        is_starter: true
-      });
-    }
-    
-    if (gameData?.teams?.home?.probablePitcher) {
-      const pitcher = gameData.teams.home.probablePitcher;
-      lineups.push({
-        game_id: game.game_id,
-        team_id: game.home_team_id,
-        lineup_type: 'pitching',
-        batting_order: null,
-        player_id: pitcher.id,
-        player_name: pitcher.fullName,
-        position: 'SP',
-        handedness: pitcher.pitchHand?.code || 'R',
-        is_starter: true
-      });
-    }
-  } catch (error) {
-    console.error('Error extracting probable pitchers:', error);
-  }
-  
+  console.log(`Created realistic Mets vs Orioles lineup: ${lineups.length} entries`);
   return lineups;
 }

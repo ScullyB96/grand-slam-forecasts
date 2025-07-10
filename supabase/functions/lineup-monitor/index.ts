@@ -86,9 +86,9 @@ serve(async (req) => {
         // Check if we already have official lineups for this game
         const { data: existingLineups, error: lineupError } = await supabase
           .from('game_lineups')
-          .select('player_name')
+          .select('player_name, player_id')
           .eq('game_id', game.game_id)
-          .limit(1);
+          .limit(5);
 
         if (lineupError) {
           console.error(`Error checking existing lineups for game ${game.game_id}:`, lineupError);
@@ -101,11 +101,15 @@ serve(async (req) => {
           continue;
         }
 
-        // Check if current lineup appears to be mock data
+        // Check if current lineup appears to be mock data (looking for fake player IDs and names)
         const isMockData = existingLineups.some(lineup => 
-          lineup.player_name.includes('Mock') || 
-          lineup.player_name.includes('Player') ||
-          lineup.player_name.includes('(') // Our mock format includes team abbreviations in parentheses
+          // Check for fake player IDs (high numbers typically used for mock data)
+          lineup.player_id >= 600000 ||
+          // Check for placeholder names
+          lineup.player_name.includes('Player (') ||
+          lineup.player_name.includes('Starting Pitcher (') ||
+          lineup.player_name.includes('Mock') ||
+          lineup.player_name.includes('Test')
         );
 
         if (!isMockData) {

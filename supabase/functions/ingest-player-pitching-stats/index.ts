@@ -127,15 +127,14 @@ serve(async (req) => {
     const jobId = jobRecord.id;
     console.log('Created pitching stats ingestion job with ID:', jobId);
 
-    // Get players to process (only pitchers)
+    // Get players to process (prioritize pitchers but include all players)
     let playersQuery = supabase
       .from('players')
       .select(`
         *,
         team:teams(id, name, abbreviation, team_id)
       `)
-      .eq('active', true)
-      .not('pitching_hand', 'is', null); // Only players with pitching hand data
+      .eq('active', true);
 
     if (playerIds) {
       playersQuery = playersQuery.in('player_id', playerIds);
@@ -195,7 +194,15 @@ serve(async (req) => {
         
         // Skip players with no pitching appearances
         if (!stats.games || stats.games === 0) {
-          console.log(`No pitching appearances for ${player.full_name}`);
+          console.log(`No pitching appearances for ${player.full_name} - skipping non-pitcher`);
+          results.skippedNonPitchers++;
+          continue;
+        }
+
+        // Validate pitching data quality
+        const inningsPitched = parseFloat(stats.inningsPitched || '0');
+        if (inningsPitched === 0) {
+          console.log(`No innings pitched for ${player.full_name} - skipping`);
           results.skippedNonPitchers++;
           continue;
         }

@@ -8,6 +8,7 @@ import { Settings, RefreshCw, Download, Bug, CheckCircle, XCircle, AlertTriangle
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PlayerStatsBackfillCard } from '@/components/PlayerStatsBackfillCard';
+import LineupMonitorCard from '@/components/LineupMonitorCard';
 
 const Admin = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -354,6 +355,9 @@ const Admin = () => {
 
           {/* Player Statistics */}
           <PlayerStatsBackfillCard />
+
+          {/* Lineup Monitor */}
+          <LineupMonitorCard />
 
           {/* ML Pipeline */}
           <Card className="lg:col-span-2">
