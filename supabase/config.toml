@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.fetch-schedule]
 verify_jwt = false
+
+[functions.monte-carlo-simulation]
+verify_jwt = false

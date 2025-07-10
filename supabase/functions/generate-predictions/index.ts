@@ -99,13 +99,13 @@ serve(async (req) => {
     let errors = 0;
     const errorDetails: string[] = [];
 
-    // STEP 2: Generate predictions using lineup data
-    console.log('🔄 Step 2: Generating lineup-based predictions...');
+    // STEP 2: Generate Monte Carlo predictions using lineup data
+    console.log('🔄 Step 2: Generating Monte Carlo predictions...');
     for (const game of games) {
       try {
         console.log(`Processing game ${game.game_id} (${game.away_team.abbreviation} @ ${game.home_team.abbreviation})...`);
         
-        // Get lineup data for this game
+        // Check if we have lineups for this game
         const { data: gameLineups, error: lineupsError } = await supabase
           .from('game_lineups')
           .select('*')
@@ -118,25 +118,66 @@ serve(async (req) => {
           continue;
         }
 
-        // Separate home and away lineups
         const homeLineup = gameLineups?.filter(l => l.team_id === game.home_team_id) || [];
         const awayLineup = gameLineups?.filter(l => l.team_id === game.away_team_id) || [];
         
         console.log(`Found ${homeLineup.length} home players, ${awayLineup.length} away players for game ${game.game_id}`);
 
-        // Get starting pitchers
-        const homeStartingPitcher = homeLineup.find(p => p.lineup_type === 'pitching' && p.is_starter);
-        const awayStartingPitcher = awayLineup.find(p => p.lineup_type === 'pitching' && p.is_starter);
+        let prediction;
 
-        // Calculate lineup-based prediction
-        const prediction = await calculateLineupBasedPrediction(
-          supabase,
-          game,
-          homeLineup,
-          awayLineup,
-          homeStartingPitcher,
-          awayStartingPitcher
-        );
+        // Try Monte Carlo simulation if we have sufficient lineup data
+        if (homeLineup.length >= 9 && awayLineup.length >= 9) {
+          console.log(`Running Monte Carlo simulation for game ${game.game_id}...`);
+          
+          try {
+            // Call Monte Carlo simulation function
+            const { data: simulationResult, error: simError } = await supabase.functions.invoke('monte-carlo-simulation', {
+              body: { 
+                game_id: game.game_id,
+                iterations: 5000 // Reduced for performance
+              }
+            });
+
+            if (simError) {
+              console.error(`Monte Carlo simulation failed for game ${game.game_id}:`, simError);
+              throw simError;
+            }
+
+            if (simulationResult?.success) {
+              console.log(`✅ Monte Carlo simulation completed for game ${game.game_id}`);
+              const stats = simulationResult.simulation_stats;
+              
+              prediction = {
+                game_id: game.game_id,
+                home_win_probability: stats.home_win_probability,
+                away_win_probability: stats.away_win_probability,
+                predicted_home_score: Math.round(stats.predicted_home_score),
+                predicted_away_score: Math.round(stats.predicted_away_score),
+                over_under_line: stats.over_under_line,
+                over_probability: stats.over_probability,
+                under_probability: stats.under_probability,
+                confidence_score: stats.confidence_score,
+                key_factors: {
+                  prediction_method: 'monte_carlo_simulation',
+                  sample_size: stats.sample_size,
+                  simulation_factors: simulationResult.factors,
+                  avg_total_runs: stats.predicted_total_runs
+                },
+                prediction_date: new Date().toISOString(),
+                last_updated: new Date().toISOString()
+              };
+            } else {
+              throw new Error('Monte Carlo simulation returned unsuccessful result');
+            }
+          } catch (mcError) {
+            console.error(`Monte Carlo simulation failed for game ${game.game_id}, falling back to basic prediction:`, mcError);
+            // Fall back to basic prediction
+            prediction = await calculateBasicPrediction(supabase, game, homeLineup, awayLineup);
+          }
+        } else {
+          console.log(`Insufficient lineup data for game ${game.game_id}, using basic prediction`);
+          prediction = await calculateBasicPrediction(supabase, game, homeLineup, awayLineup);
+        }
 
         console.log(`Saving prediction for game ${game.game_id}:`, prediction);
         
@@ -324,14 +365,12 @@ function createMockLineupForGame(game: any) {
   return lineups;
 }
 
-// Helper function to calculate lineup-based predictions
-async function calculateLineupBasedPrediction(
+// Helper function to calculate basic predictions (fallback)
+async function calculateBasicPrediction(
   supabase: any,
   game: any,
   homeLineup: any[],
-  awayLineup: any[],
-  homeStartingPitcher: any,
-  awayStartingPitcher: any
+  awayLineup: any[]
 ) {
   console.log(`🧮 Calculating lineup-based prediction for game ${game.game_id}`);
   
@@ -357,6 +396,10 @@ async function calculateLineupBasedPrediction(
   // Lineup quality factors (placeholder - would use real player stats in production)
   const homeLineupQuality = calculateLineupQuality(homeBattingLineup);
   const awayLineupQuality = calculateLineupQuality(awayBattingLineup);
+  
+  // Get starting pitchers
+  const homeStartingPitcher = homeLineup.find(p => p.lineup_type === 'pitching' && p.is_starter);
+  const awayStartingPitcher = awayLineup.find(p => p.lineup_type === 'pitching' && p.is_starter);
   
   // Pitcher matchup factor
   const pitcherMatchup = calculatePitcherMatchup(homeStartingPitcher, awayStartingPitcher);
