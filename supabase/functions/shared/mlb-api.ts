@@ -132,7 +132,90 @@ export async function getGameLineups(gamePk: number) {
 }
 
 /**
- * Extract lineups from game live feed
+ * Get game boxscore with full lineup data
+ */
+export async function getGameBoxscore(gamePk: number) {
+  console.log(`Fetching game boxscore for game ${gamePk}`);
+  
+  const boxscoreData = await makeMLBRequest(`/game/${gamePk}/boxscore`);
+  return boxscoreData;
+}
+
+/**
+ * Extract lineups from game boxscore data
+ */
+export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any, teamIdMap?: Map<number, number>) {
+  const lineups: any[] = [];
+  
+  if (!boxscoreData?.teams) {
+    console.log('No boxscore teams data available yet');
+    return lineups;
+  }
+
+  const teams = boxscoreData.teams;
+  const gameInfo = gameData?.gameData || {};
+  
+  // Process home and away teams
+  ['home', 'away'].forEach(teamType => {
+    const teamData = teams[teamType];
+    const teamInfo = gameInfo.teams?.[teamType] || teamData.team;
+    
+    if (!teamData?.lineup || teamData.lineup.length === 0) {
+      console.log(`No ${teamType} batting lineup available yet`);
+      return;
+    }
+
+    // Map MLB team ID to our database team ID
+    const mlbTeamId = teamInfo.id;
+    const dbTeamId = teamIdMap?.get(mlbTeamId);
+    
+    if (!dbTeamId) {
+      console.error(`❌ No mapping found for MLB team ID ${mlbTeamId} (${teamInfo.name})`);
+      console.log('Available mappings:', Array.from(teamIdMap?.entries() || []));
+      return; // Skip this team if no mapping found
+    }
+    
+    console.log(`✅ Mapping team ${teamInfo.name} from MLB ID ${mlbTeamId} to DB ID ${dbTeamId}`);
+
+    // Extract batting lineup from boxscore lineup array
+    teamData.lineup.forEach((playerData: any, index: number) => {
+      if (playerData && index < 9) { // Only first 9 are batting order
+        lineups.push({
+          game_id: parseInt(gameInfo.pk || boxscoreData.gamePk),
+          team_id: dbTeamId,
+          lineup_type: 'batting',
+          batting_order: index + 1,
+          player_id: playerData.person.id,
+          player_name: playerData.person.fullName,
+          position: playerData.position?.abbreviation || 'Unknown',
+          handedness: playerData.person.batSide?.code || 'R',
+          is_starter: true
+        });
+      }
+    });
+
+    // Extract probable pitcher from game data
+    const probablePitcher = gameInfo.probablePitchers?.[teamType];
+    if (probablePitcher) {
+      lineups.push({
+        game_id: parseInt(gameInfo.pk || boxscoreData.gamePk),
+        team_id: dbTeamId,
+        lineup_type: 'pitching',
+        batting_order: null,
+        player_id: probablePitcher.id,
+        player_name: probablePitcher.fullName,
+        position: 'SP',
+        handedness: probablePitcher.pitchHand?.code || 'R',
+        is_starter: true
+      });
+    }
+  });
+
+  return lineups;
+}
+
+/**
+ * Extract lineups from game live feed (fallback method)
  */
 export function extractLineupsFromGameFeed(gameData: any, teamIdMap?: Map<number, number>) {
   const lineups: any[] = [];

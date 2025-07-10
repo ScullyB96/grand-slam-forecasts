@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getGameLineups, extractLineupsFromGameFeed, createTeamIdMapping, getSchedule } from '../shared/mlb-api.ts';
+import { getGameLineups, getGameBoxscore, extractLineupsFromGameFeed, extractLineupsFromBoxscore, createTeamIdMapping, getSchedule } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -192,13 +192,32 @@ serve(async (req) => {
     for (const game of games) {
       try {
         console.log(`Fetching lineup for game ${game.game_id}`);
+        
+        // Try boxscore endpoint first for full lineup data
+        try {
+          console.log(`Trying boxscore endpoint for game ${game.game_id}`);
+          const boxscoreData = await getGameBoxscore(game.game_id);
+          const gameData = await getGameLineups(game.game_id);
+          const gameLineups = extractLineupsFromBoxscore(boxscoreData, gameData, teamIdMapping);
+          
+          if (gameLineups.length > 0) {
+            lineups.push(...gameLineups);
+            officialLineupsFound++;
+            console.log(`✅ Found official lineup from boxscore for game ${game.game_id} (${gameLineups.length} players)`);
+            continue; // Skip fallback if boxscore worked
+          }
+        } catch (boxscoreError) {
+          console.log(`Boxscore not available for game ${game.game_id}, trying live feed`);
+        }
+        
+        // Fallback to live feed method
         const gameData = await getGameLineups(game.game_id);
         const gameLineups = extractLineupsFromGameFeed(gameData, teamIdMapping);
         
         if (gameLineups.length > 0) {
           lineups.push(...gameLineups);
           officialLineupsFound++;
-          console.log(`✅ Found official lineup for game ${game.game_id} (${gameLineups.length} players)`);
+          console.log(`✅ Found official lineup from live feed for game ${game.game_id} (${gameLineups.length} players)`);
         } else {
           console.log(`⏳ Official lineup not yet available for game ${game.game_id}`);
         }
