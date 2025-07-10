@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -61,19 +60,11 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
 
   const formatGameTime = (timeString?: string) => {
     if (!timeString) return 'TBD';
-    
-    // Create a date object with today's date and the game time
-    const today = new Date();
-    const [hours, minutes] = timeString.split(':').map(Number);
-    const gameDateTime = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes);
-    
-    // Format in EST timezone
-    return gameDateTime.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZone: 'America/New_York'
-    });
+    const [hours, minutes] = timeString.split(':');
+    const hour = parseInt(hours, 10);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const formattedHour = hour % 12 || 12;
+    return `${formattedHour}:${minutes} ${ampm}`;
   };
 
   const formatPredictionDate = (dateString: string) => {
@@ -88,10 +79,10 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
     });
   };
 
-  const favoredTeam = prediction.home_win_probability > prediction.away_win_probability 
-    ? homeTeam 
+  const favoredTeam = prediction.home_win_probability > prediction.away_win_probability
+    ? homeTeam
     : awayTeam;
-  
+
   const favoredProb = Math.max(prediction.home_win_probability, prediction.away_win_probability);
 
   return (
