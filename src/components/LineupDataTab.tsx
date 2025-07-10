@@ -4,7 +4,7 @@ import { useGameLineups, GameLineup } from '@/hooks/useGameLineups';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Users, Zap, RefreshCw } from 'lucide-react';
+import { Users, Zap, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLineupIngestion } from '@/hooks/useLineupIngestion';
 import { useToast } from '@/hooks/use-toast';
@@ -98,7 +98,28 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
     );
   }
 
-  // Check if lineups are official
+  // Validate lineup data quality
+  const validateLineupData = () => {
+    const battingLineups = lineups.filter(l => l.lineup_type === 'batting');
+    const pitchingLineups = lineups.filter(l => l.lineup_type === 'pitching');
+    const starters = pitchingLineups.filter(p => p.is_starter);
+    
+    const homeTeamBatters = battingLineups.filter(l => l.team_id === homeTeam?.id);
+    const awayTeamBatters = battingLineups.filter(l => l.team_id === awayTeam?.id);
+    
+    return {
+      totalBatters: battingLineups.length,
+      expectedBatters: 18,
+      homeTeamBatters: homeTeamBatters.length,
+      awayTeamBatters: awayTeamBatters.length,
+      startingPitchers: starters.length,
+      expectedStarters: 2,
+      isValid: battingLineups.length === 18 && starters.length === 2 && 
+               homeTeamBatters.length === 9 && awayTeamBatters.length === 9
+    };
+  };
+
+  const validation = validateLineupData();
   const hasOfficialLineups = lineups.some(lineup => 
     lineup.lineup_type === 'batting' && lineup.batting_order !== null
   );
@@ -134,6 +155,20 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
           )}
         </Button>
       </div>
+      
+      {/* Data Quality Validation */}
+      {!validation.isValid && (
+        <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded text-sm">
+          <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="font-medium">Data Quality Issue</span>
+          </div>
+          <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+            Expected: 18 batters (9 per team), 2 starting pitchers | 
+            Found: {validation.totalBatters} batters ({validation.awayTeamBatters}/{validation.homeTeamBatters}), {validation.startingPitchers} starters
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -174,8 +209,14 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
                 <span className="font-medium">{player.player_name}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="outline">{player.position}</Badge>
-                <Badge variant="outline">{player.handedness}</Badge>
+                {/* Display actual position - no fallback to DH */}
+                <Badge variant="outline" className="text-xs">
+                  {player.position || 'UNK'}
+                </Badge>
+                {/* Display actual batting handedness - no fallback to R */}
+                <Badge variant="outline" className="text-xs">
+                  {player.handedness || 'U'}
+                </Badge>
               </div>
             </div>
           ))}
@@ -211,7 +252,10 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
               <Badge variant="default">SP</Badge>
               <span className="font-medium">{player.player_name}</span>
             </div>
-            <Badge variant="outline">{player.handedness}HP</Badge>
+            {/* Display actual pitching handedness - no fallback */}
+            <Badge variant="outline" className="text-xs">
+              {player.handedness || 'U'}HP
+            </Badge>
           </div>
         ))}
         
@@ -224,7 +268,9 @@ const LineupDataTab: React.FC<LineupDataTabProps> = ({ gameId, homeTeam, awayTea
                   <Badge variant="secondary">RP</Badge>
                   <span className="text-sm">{player.player_name}</span>
                 </div>
-                <Badge variant="outline" className="text-xs">{player.handedness}HP</Badge>
+                <Badge variant="outline" className="text-xs">
+                  {player.handedness || 'U'}HP
+                </Badge>
               </div>
             ))}
           </div>

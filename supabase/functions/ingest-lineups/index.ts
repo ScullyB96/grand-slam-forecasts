@@ -118,7 +118,7 @@ serve(async (req) => {
     for (const mlbGame of mlbGames) {
       try {
         const gameId = mlbGame.gamePk;
-        console.log(`🏈 Processing game ${gameId}`);
+        console.log(`🏈 Processing game ${gameId} (${mlbGame.teams?.away?.team?.name} @ ${mlbGame.teams?.home?.team?.name})`);
 
         // Check if lineups already exist (unless force refresh)
         if (!forceRefresh) {
@@ -147,8 +147,8 @@ serve(async (req) => {
           }
         }
 
-        // Fetch lineups from MLB API with enhanced debugging
-        console.log(`📥 Fetching lineup data for game ${gameId}`);
+        // Fetch lineups from MLB Boxscore API
+        console.log(`📥 Fetching boxscore data for game ${gameId}`);
         const boxscoreData = await getGameBoxscore(gameId);
         
         if (!boxscoreData) {
@@ -166,20 +166,18 @@ serve(async (req) => {
         console.log(`  - Teams keys: ${boxscoreData.teams ? Object.keys(boxscoreData.teams) : 'none'}`);
         
         if (boxscoreData.teams?.home) {
-          console.log(`  - Home team keys: ${Object.keys(boxscoreData.teams.home)}`);
-          console.log(`  - Home batters array length: ${boxscoreData.teams.home.batters?.length || 0}`);
+          console.log(`  - Home team: ${boxscoreData.teams.home.team?.name}`);
+          console.log(`  - Home lineup array length: ${boxscoreData.teams.home.lineup?.length || 0}`);
           console.log(`  - Home pitchers array length: ${boxscoreData.teams.home.pitchers?.length || 0}`);
-          console.log(`  - Home players object keys count: ${boxscoreData.teams.home.players ? Object.keys(boxscoreData.teams.home.players).length : 0}`);
         }
         
         if (boxscoreData.teams?.away) {
-          console.log(`  - Away team keys: ${Object.keys(boxscoreData.teams.away)}`);
-          console.log(`  - Away batters array length: ${boxscoreData.teams.away.batters?.length || 0}`);
+          console.log(`  - Away team: ${boxscoreData.teams.away.team?.name}`);
+          console.log(`  - Away lineup array length: ${boxscoreData.teams.away.lineup?.length || 0}`);
           console.log(`  - Away pitchers array length: ${boxscoreData.teams.away.pitchers?.length || 0}`);
-          console.log(`  - Away players object keys count: ${boxscoreData.teams.away.players ? Object.keys(boxscoreData.teams.away.players).length : 0}`);
         }
 
-        // Extract lineups using the shared MLB API helper with enhanced debugging
+        // Extract lineups using the corrected MLB API helper
         const lineups = extractLineupsFromBoxscore(boxscoreData, gameId, teamIdMapping);
         
         console.log(`📊 Lineup extraction results for game ${gameId}:`);
@@ -191,6 +189,19 @@ serve(async (req) => {
         
         if (battingLineups.length > 0) {
           console.log(`  - Batting orders found: ${battingLineups.map(b => b.batting_order).sort((a, b) => a - b)}`);
+        }
+        
+        // Validate lineup counts
+        const expectedBatters = 18; // 9 per team
+        const expectedStarters = 2; // 1 per team
+        const starters = pitchingLineups.filter(p => p.is_starter);
+        
+        if (battingLineups.length !== expectedBatters) {
+          console.log(`⚠️ WARNING - Expected ${expectedBatters} batters, got ${battingLineups.length} for game ${gameId}`);
+        }
+        
+        if (starters.length !== expectedStarters) {
+          console.log(`⚠️ WARNING - Expected ${expectedStarters} starting pitchers, got ${starters.length} for game ${gameId}`);
         }
         
         if (lineups.length === 0) {
@@ -245,6 +256,13 @@ serve(async (req) => {
           lineupsInserted: validLineups.length,
           battingLineups: battingLineups.length,
           pitchingLineups: pitchingLineups.length,
+          validation: {
+            expectedBatters: expectedBatters,
+            actualBatters: battingLineups.length,
+            expectedStarters: expectedStarters,
+            actualStarters: starters.length,
+            isValid: battingLineups.length === expectedBatters && starters.length === expectedStarters
+          },
           status: 'success'
         });
 
@@ -282,6 +300,11 @@ serve(async (req) => {
       failed_games: failedGames,
       job_id: jobId,
       results: results,
+      validation_summary: {
+        total_games_processed: processedCount,
+        games_with_valid_lineups: results.filter(r => r.validation?.isValid).length,
+        games_with_invalid_lineups: results.filter(r => !r.validation?.isValid).length
+      },
       message: `Processed ${processedCount}/${mlbGames.length} games for ${targetDate}`
     };
 

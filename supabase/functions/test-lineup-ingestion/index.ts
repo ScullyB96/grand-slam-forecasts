@@ -1,7 +1,8 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { getGameLineups, extractLineupsFromGameFeed, createTeamIdMapping } from '../shared/mlb-api.ts';
+import { getGameBoxscore, createTeamIdMapping } from '../shared/mlb-api.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -9,7 +10,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('=== LINEUP INGESTION TEST FUNCTION STARTED ===');
+  console.log('=== LINEUP AUDIT FUNCTION STARTED ===');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -22,11 +23,10 @@ serve(async (req) => {
 
   try {
     // Test with a specific game that should have lineups
-    const testGameId = 777165; // Mets vs Orioles
-    console.log(`Testing lineup ingestion for game ${testGameId}`);
+    const testGameId = 777165; // Known game with lineup data
+    console.log(`🔍 Auditing JSON payload for game ${testGameId}`);
 
     // Get team mapping first
-    console.log('Fetching team mapping...');
     const { data: teams, error: teamsError } = await supabase
       .from('teams')
       .select('id, team_id, name, abbreviation');
@@ -35,113 +35,115 @@ serve(async (req) => {
       throw new Error('Failed to fetch teams: ' + teamsError.message);
     }
 
-    console.log('Available teams in database:');
-    teams?.forEach(team => {
-      console.log(`  ${team.name} (${team.abbreviation}) - MLB ID: ${team.team_id}, DB ID: ${team.id}`);
-    });
-
     const teamIdMapping = createTeamIdMapping(teams || []);
-    console.log('Team ID mapping:', Array.from(teamIdMapping.entries()));
 
-    // Try to fetch lineup from MLB API
-    console.log(`Fetching game data from MLB API for game ${testGameId}...`);
-    const gameData = await getGameLineups(testGameId);
+    // Fetch boxscore data
+    console.log(`📥 Fetching boxscore data from MLB API...`);
+    const boxscoreData = await getGameBoxscore(testGameId);
     
-    if (!gameData?.gameData?.teams) {
-      console.log('No game data available from MLB API');
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'No game data available from MLB API',
-        gameData: gameData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    if (!boxscoreData?.teams) {
+      throw new Error('No boxscore data available from MLB API');
     }
 
-    console.log('Game teams from MLB API:');
-    console.log(`  Home: ${gameData.gameData.teams.home.name} (ID: ${gameData.gameData.teams.home.id})`);
-    console.log(`  Away: ${gameData.gameData.teams.away.name} (ID: ${gameData.gameData.teams.away.id})`);
+    console.log(`✅ Boxscore data fetched successfully`);
+    
+    // Audit the JSON structure
+    const auditResults = {
+      gameId: testGameId,
+      timestamp: new Date().toISOString(),
+      structure: {
+        hasTeams: !!boxscoreData.teams,
+        homeTeam: !!boxscoreData.teams.home,
+        awayTeam: !!boxscoreData.teams.away
+      },
+      homeTeamData: {},
+      awayTeamData: {},
+      sampleLineupEntry: null,
+      samplePitcherEntry: null
+    };
 
-    // Extract lineups
-    const lineups = extractLineupsFromGameFeed(gameData, teamIdMapping);
-    console.log(`Extracted ${lineups.length} lineup entries`);
+    // Analyze home team structure
+    if (boxscoreData.teams.home) {
+      const homeTeam = boxscoreData.teams.home;
+      auditResults.homeTeamData = {
+        teamName: homeTeam.team?.name,
+        teamId: homeTeam.team?.id,
+        hasLineup: !!homeTeam.lineup,
+        lineupLength: homeTeam.lineup?.length || 0,
+        hasPitchers: !!homeTeam.pitchers,
+        pitchersLength: homeTeam.pitchers?.length || 0,
+        availableKeys: Object.keys(homeTeam)
+      };
 
-    if (lineups.length === 0) {
-      console.log('No lineups extracted from game feed');
-      console.log('Raw boxscore data available:', !!gameData?.liveData?.boxscore);
-      console.log('Teams in boxscore:', Object.keys(gameData?.liveData?.boxscore?.teams || {}));
-      
-      return new Response(JSON.stringify({
-        success: false,
-        message: 'No lineups available in game feed',
-        hasBoxscore: !!gameData?.liveData?.boxscore,
-        teamsInBoxscore: Object.keys(gameData?.liveData?.boxscore?.teams || {}),
-        gameData: gameData
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    // Validate lineup data
-    console.log('Validating lineup data...');
-    const validLineups = [];
-    const invalidLineups = [];
-    const availableTeamIds = teams?.map(t => t.id) || [];
-
-    lineups.forEach(lineup => {
-      console.log(`Checking lineup entry: ${lineup.player_name} (Team ID: ${lineup.team_id})`);
-      if (availableTeamIds.includes(lineup.team_id)) {
-        validLineups.push(lineup);
-      } else {
-        invalidLineups.push(lineup);
-        console.error(`❌ Invalid team ID ${lineup.team_id} for ${lineup.player_name}`);
-      }
-    });
-
-    console.log(`Valid lineups: ${validLineups.length}, Invalid: ${invalidLineups.length}`);
-
-    // Clear existing lineups for this game
-    console.log(`Clearing existing lineups for game ${testGameId}...`);
-    const { error: deleteError } = await supabase
-      .from('game_lineups')
-      .delete()
-      .eq('game_id', testGameId);
-
-    if (deleteError) {
-      console.error('Error clearing existing lineups:', deleteError);
-    }
-
-    // Insert valid lineups
-    if (validLineups.length > 0) {
-      console.log(`Inserting ${validLineups.length} valid lineup entries...`);
-      const { error: insertError } = await supabase
-        .from('game_lineups')
-        .insert(validLineups);
-
-      if (insertError) {
-        console.error('Error inserting lineups:', insertError);
-        throw new Error('Failed to insert lineups: ' + insertError.message);
+      // Sample lineup entry
+      if (homeTeam.lineup && homeTeam.lineup.length > 0) {
+        const samplePlayer = homeTeam.lineup[0];
+        auditResults.sampleLineupEntry = {
+          raw: samplePlayer,
+          person: samplePlayer.person,
+          position: samplePlayer.position,
+          battingOrder: samplePlayer.battingOrder,
+          availablePersonFields: samplePlayer.person ? Object.keys(samplePlayer.person) : [],
+          batSide: samplePlayer.person?.batSide,
+          pitchHand: samplePlayer.person?.pitchHand
+        };
+        
+        console.log(`📊 Sample home lineup entry:`, JSON.stringify(samplePlayer, null, 2));
       }
 
-      console.log('✅ Successfully inserted lineups');
+      // Sample pitcher entry
+      if (homeTeam.pitchers && homeTeam.pitchers.length > 0) {
+        const samplePitcher = homeTeam.pitchers[0];
+        auditResults.samplePitcherEntry = {
+          raw: samplePitcher,
+          person: samplePitcher.person,
+          availablePersonFields: samplePitcher.person ? Object.keys(samplePitcher.person) : [],
+          batSide: samplePitcher.person?.batSide,
+          pitchHand: samplePitcher.person?.pitchHand
+        };
+        
+        console.log(`⚾ Sample home pitcher entry:`, JSON.stringify(samplePitcher, null, 2));
+      }
     }
+
+    // Analyze away team structure
+    if (boxscoreData.teams.away) {
+      const awayTeam = boxscoreData.teams.away;
+      auditResults.awayTeamData = {
+        teamName: awayTeam.team?.name,
+        teamId: awayTeam.team?.id,
+        hasLineup: !!awayTeam.lineup,
+        lineupLength: awayTeam.lineup?.length || 0,
+        hasPitchers: !!awayTeam.pitchers,
+        pitchersLength: awayTeam.pitchers?.length || 0,
+        availableKeys: Object.keys(awayTeam)
+      };
+    }
+
+    console.log(`🎯 Audit Results Summary:`);
+    console.log(`  - Home team lineup entries: ${auditResults.homeTeamData.lineupLength}`);
+    console.log(`  - Home team pitcher entries: ${auditResults.homeTeamData.pitchersLength}`);
+    console.log(`  - Away team lineup entries: ${auditResults.awayTeamData.lineupLength}`);
+    console.log(`  - Away team pitcher entries: ${auditResults.awayTeamData.pitchersLength}`);
 
     return new Response(JSON.stringify({
       success: true,
-      gameId: testGameId,
-      totalLineups: lineups.length,
-      validLineups: validLineups.length,
-      invalidLineups: invalidLineups.length,
-      teamMapping: Array.from(teamIdMapping.entries()),
-      availableTeamIds,
-      sampleLineup: validLineups[0] || null,
-      invalidEntries: invalidLineups
+      audit: auditResults,
+      recommendations: [
+        "Use boxscoreData.teams.home.lineup[] and boxscoreData.teams.away.lineup[] for batting lineups",
+        "Use boxscoreData.teams.home.pitchers[] and boxscoreData.teams.away.pitchers[] for pitching lineups",
+        "Extract position from player.position.code or player.position.abbreviation",
+        "Extract batting handedness from player.person.batSide.code",
+        "Extract pitching handedness from player.person.pitchHand.code",
+        "Use player.battingOrder for batting order (not array index)",
+        "Validate 9 batters per team and 1+ pitcher per team"
+      ]
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
   } catch (error) {
-    console.error('❌ Lineup test failed:', error);
+    console.error('❌ Lineup audit failed:', error);
     
     return new Response(JSON.stringify({
       success: false,
