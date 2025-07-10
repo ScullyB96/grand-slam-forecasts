@@ -26,6 +26,22 @@ serve(async (req) => {
     // Get today's games that currently have projected/mock lineups
     const today = new Date().toISOString().split('T')[0];
     console.log('Checking games for date:', today);
+
+    // First, verify games exist in MLB schedule API
+    console.log('Fetching MLB schedule to validate games...');
+    const mlbScheduleUrl = `https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=${today}`;
+    const mlbResponse = await fetch(mlbScheduleUrl);
+    
+    if (!mlbResponse.ok) {
+      throw new Error(`MLB Schedule API error: ${mlbResponse.status} ${mlbResponse.statusText}`);
+    }
+    
+    const mlbSchedule = await mlbResponse.json();
+    const validGameIds = new Set(
+      mlbSchedule.dates?.[0]?.games?.map((game: any) => game.gamePk) || []
+    );
+    
+    console.log(`Found ${validGameIds.size} valid games in MLB schedule:`, Array.from(validGameIds));
     
     const { data: games, error: gamesError } = await supabase
       .from('games')
@@ -45,7 +61,7 @@ serve(async (req) => {
       throw new Error('Failed to fetch games: ' + gamesError.message);
     }
 
-    console.log(`Found ${games?.length || 0} games to monitor`);
+    console.log(`Found ${games?.length || 0} games in database to monitor`);
 
     if (!games || games.length === 0) {
       return new Response(JSON.stringify({
@@ -53,6 +69,29 @@ serve(async (req) => {
         message: 'No games found for monitoring',
         checked: 0,
         updated: 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Filter games to only those that exist in MLB schedule
+    const validGames = games.filter(game => validGameIds.has(game.game_id));
+    const invalidGames = games.filter(game => !validGameIds.has(game.game_id));
+    
+    if (invalidGames.length > 0) {
+      console.log(`⚠️ Found ${invalidGames.length} games in database that don't exist in MLB schedule:`, 
+        invalidGames.map(g => g.game_id));
+    }
+    
+    console.log(`Monitoring ${validGames.length} valid games (filtered from ${games.length} total)`);
+
+    if (validGames.length === 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'No valid MLB games found for monitoring',
+        checked: 0,
+        updated: 0,
+        invalid_games: invalidGames.map(g => g.game_id)
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -77,8 +116,8 @@ serve(async (req) => {
     let gamesUpdated = 0;
     const updateResults: string[] = [];
 
-    // Check each game for official lineup availability
-    for (const game of games) {
+    // Check each valid game for official lineup availability
+    for (const game of validGames) {
       try {
         console.log(`Checking game ${game.game_id} for official lineups...`);
         gamesChecked++;
@@ -164,7 +203,8 @@ serve(async (req) => {
       message: `Lineup monitoring completed`,
       checked: gamesChecked,
       updated: gamesUpdated,
-      total_games: games.length,
+      total_games: validGames.length,
+      invalid_games_found: invalidGames.length,
       updates: updateResults,
       timestamp: new Date().toISOString()
     }), {
