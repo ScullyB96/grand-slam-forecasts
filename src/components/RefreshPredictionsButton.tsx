@@ -146,7 +146,7 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
         description: "Creating mock lineups for all games..."
       });
 
-      const { data, error } = await supabase.functions.invoke('test-lineups', {
+      const { data, error } = await supabase.functions.invoke('create-test-lineup', {
         body: { source: 'manual' }
       });
 
