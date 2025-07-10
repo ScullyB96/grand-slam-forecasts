@@ -23,6 +23,32 @@ serve(async (req) => {
   let jobId: number | null = null;
 
   try {
+    // Parse request body for date parameter
+    let targetDate = new Date().toISOString().split('T')[0]; // Default to today
+    let force = false;
+    
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        if (body.date) {
+          targetDate = body.date;
+        }
+        if (body.force) {
+          force = body.force;
+        }
+      } catch (e) {
+        console.log('No valid JSON body, using defaults');
+      }
+    }
+    
+    // Also check URL parameters
+    const url = new URL(req.url);
+    const urlDate = url.searchParams.get('date');
+    if (urlDate) {
+      targetDate = urlDate;
+    }
+    
+    console.log(`Target date: ${targetDate}, Force: ${force}`);
     console.log('Creating lineup ingestion job...');
     
     // Log job start
@@ -51,9 +77,8 @@ serve(async (req) => {
     jobId = jobRecord.id;
     console.log('Created job with ID:', jobId);
 
-    // Get today's games that need lineups
-    const today = '2025-07-10'; // Force today for testing
-    console.log('Fetching games for date:', today);
+    // Get games for the target date
+    console.log('Fetching games for date:', targetDate);
     
     const { data: games, error: gamesError } = await supabase
       .from('games')
@@ -65,7 +90,7 @@ serve(async (req) => {
         home_team:teams!games_home_team_id_fkey(id, name, abbreviation),
         away_team:teams!games_away_team_id_fkey(id, name, abbreviation)
       `)
-      .eq('game_date', today)
+      .eq('game_date', targetDate)
       .eq('status', 'scheduled');
 
     if (gamesError) {
@@ -73,10 +98,10 @@ serve(async (req) => {
       throw new Error('Failed to fetch games: ' + gamesError.message);
     }
 
-    console.log(`Found ${games?.length || 0} games for today`);
+    console.log(`Found ${games?.length || 0} games for ${targetDate}`);
 
     if (!games || games.length === 0) {
-      console.log('No games found for today, completing job');
+      console.log(`No games found for ${targetDate}, completing job`);
       await supabase
         .from('data_ingestion_jobs')
         .update({
@@ -88,7 +113,7 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         success: true,
-        message: 'No games found for today',
+        message: `No games found for ${targetDate}`,
         processed: 0
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

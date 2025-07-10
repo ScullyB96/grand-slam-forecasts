@@ -196,10 +196,30 @@ Deno.serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    // Get date parameter or use today
+    // Parse request body for date parameter
+    let targetDate = new Date().toISOString().split('T')[0]; // Default to today
+    let force = false;
+    
+    if (req.method === 'POST') {
+      try {
+        const body = await req.json();
+        if (body.date) {
+          targetDate = body.date;
+        }
+        if (body.force) {
+          force = body.force;
+        }
+      } catch (e) {
+        console.log('No valid JSON body, using defaults');
+      }
+    }
+    
+    // Also check URL parameters
     const url = new URL(req.url);
-    const dateParam = url.searchParams.get('date');
-    const targetDate = dateParam || new Date().toISOString().split('T')[0];
+    const urlDate = url.searchParams.get('date');
+    if (urlDate) {
+      targetDate = urlDate;
+    }
 
     console.log(`Starting MLB schedule ingestion for ${targetDate}`);
 

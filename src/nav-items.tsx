@@ -1,9 +1,10 @@
 
-import { HomeIcon, BarChart3, TrendingUp, Calendar, Settings } from "lucide-react";
+import { HomeIcon, BarChart3, TrendingUp, Calendar, Settings, Database } from "lucide-react";
 import HomePage from "./pages/HomePage.tsx";
 import Stats from "./pages/Stats.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import Predictions from "./pages/Predictions.tsx";
+import HistoricalAnalysis from "./pages/HistoricalAnalysis.tsx";
 import Admin from "./pages/Admin.tsx";
 
 /**
@@ -21,6 +22,12 @@ export const navItems = [
     to: "/predictions",
     icon: <TrendingUp className="h-4 w-4" />,
     page: <Predictions />,
+  },
+  {
+    title: "Historical Analysis",
+    to: "/historical",
+    icon: <Database className="h-4 w-4" />,
+    page: <HistoricalAnalysis />,
   },
   {
     title: "Admin",
