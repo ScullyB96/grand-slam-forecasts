@@ -90,6 +90,17 @@ async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
     
     console.log(`Successfully fetched ${games.length} games from MLB API`);
     
+    // Check for duplicate game IDs
+    const gameIds = games.map(g => g.gamePk);
+    const uniqueIds = new Set(gameIds);
+    if (gameIds.length !== uniqueIds.size) {
+      console.warn('Duplicate game IDs detected!', {
+        totalGames: gameIds.length,
+        uniqueGames: uniqueIds.size,
+        gameIds: gameIds
+      });
+    }
+    
     // Log sample game structure for debugging
     if (games.length > 0) {
       console.log('Sample game structure:', JSON.stringify(games[0], null, 2));
@@ -339,7 +350,7 @@ async function verifyIngestion(supabase: any, targetDate: string) {
     
     const { data: games, error } = await supabase
       .from('games')
-      .select('*')
+      .select('game_id, status')
       .eq('game_date', targetDate);
 
     if (error) {
@@ -349,8 +360,9 @@ async function verifyIngestion(supabase: any, targetDate: string) {
 
     const gameCount = games?.length || 0;
     console.log(`Verification complete: Found ${gameCount} games for ${targetDate}`);
+    console.log('Game IDs found:', games?.map((g: any) => g.game_id) || []);
     
-    return { success: gameCount > 0, gameCount };
+    return { success: gameCount > 0, gameCount, gameIds: games?.map((g: any) => g.game_id) || [] };
   } catch (error) {
     console.error('Verification process failed', { error: error.message });
     return { success: false, gameCount: 0, error: error.message };
