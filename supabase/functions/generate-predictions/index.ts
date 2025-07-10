@@ -436,7 +436,7 @@ async function calculateBasicPrediction(
     over_under_line: overUnderLine,
     over_probability: totalRuns > overUnderLine ? 0.55 : 0.45,
     under_probability: totalRuns > overUnderLine ? 0.45 : 0.55,
-    confidence_score: 0.78, // Higher confidence with lineup data
+    confidence_score: calculateConfidenceScore(homeLineup, awayLineup, homeStats, awayStats),
     key_factors: {
       home_starting_pitcher: homeStartingPitcher?.player_name || 'Unknown',
       away_starting_pitcher: awayStartingPitcher?.player_name || 'Unknown',
@@ -492,4 +492,33 @@ function calculatePitcherMatchup(homePitcher: any, awayPitcher: any) {
     homePitcherAdvantage: homeAdvantage,
     advantage: homePitcher?.handedness === 'L' ? 'Lefty vs Lineup' : 'Standard Matchup'
   };
+}
+
+// Calculate prediction confidence score
+function calculateConfidenceScore(homeLineup: any[], awayLineup: any[], homeStats: any, awayStats: any): number {
+  let confidence = 0.5; // Base confidence
+  
+  // Factor 1: Lineup completeness (40% weight)
+  const lineupCompleteness = Math.min(homeLineup.length, awayLineup.length) / 10; // 9 batters + 1 pitcher
+  
+  // Factor 2: Team stats availability (30% weight)
+  const statsAvailability = (homeStats && awayStats) ? 1.0 : 0.5;
+  
+  // Factor 3: Lineup quality (20% weight)
+  const hasOfficialLineups = !homeLineup.some(p => p.player_name.includes('Mock') || p.player_name.includes('Player ('));
+  const lineupQuality = hasOfficialLineups ? 0.9 : 0.6;
+  
+  // Factor 4: Sample size (10% weight)
+  const homeGames = homeStats ? homeStats.wins + homeStats.losses : 0;
+  const awayGames = awayStats ? awayStats.wins + awayStats.losses : 0;
+  const sampleSize = Math.min(homeGames, awayGames) / 50; // Confidence increases with more games
+  
+  confidence = (
+    lineupCompleteness * 0.40 +
+    statsAvailability * 0.30 +
+    lineupQuality * 0.20 +
+    sampleSize * 0.10
+  );
+  
+  return Math.max(0.15, Math.min(0.95, confidence));
 }

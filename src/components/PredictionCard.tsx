@@ -10,6 +10,7 @@ import ExplanationModal from './ExplanationModal';
 import PredictionDataTab from './PredictionDataTab';
 import LineupDataTab from './LineupDataTab';
 import MonteCarloSimulationCard from './MonteCarloSimulationCard';
+import PredictionConfidenceCard from './PredictionConfidenceCard';
 
 interface GamePrediction {
   id: number;
@@ -149,10 +150,14 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
 
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="prediction" className="flex items-center gap-2">
                 <Trophy className="h-4 w-4" />
                 Prediction
+              </TabsTrigger>
+              <TabsTrigger value="confidence" className="flex items-center gap-2">
+                <Percent className="h-4 w-4" />
+                Confidence
               </TabsTrigger>
               <TabsTrigger value="simulation" className="flex items-center gap-2">
                 <Zap className="h-4 w-4" />
@@ -419,6 +424,13 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
                   View Details
                 </Button>
               </div>
+            </TabsContent>
+            
+            <TabsContent value="confidence" className="mt-6">
+              <PredictionConfidenceCard 
+                prediction={prediction}
+                gameData={{ home_team: homeTeam, away_team: awayTeam }}
+              />
             </TabsContent>
             
             <TabsContent value="simulation" className="mt-6">

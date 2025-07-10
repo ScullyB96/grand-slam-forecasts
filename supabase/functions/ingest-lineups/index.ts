@@ -201,17 +201,17 @@ serve(async (req) => {
       }
     }
 
-    // STEP 3: Only create real-looking test lineups for test games when absolutely necessary
-    console.log('🔍 Step 3: Creating high-quality mock lineups only for test/demo games...');
+    // STEP 3: Create mock lineups for ALL games that don't have official lineups yet
+    console.log('🔍 Step 3: Creating mock lineups for games without official lineups...');
     
-    const allowedTestGames = [777165, 777166, 777168]; // Limited test games
     const gamesNeedingMockLineups = games.filter(game => 
-      allowedTestGames.includes(game.game_id) && 
       !lineups.some(lineup => lineup.game_id === game.game_id && lineup.lineup_type === 'batting')
     );
 
+    console.log(`Creating mock lineups for ${gamesNeedingMockLineups.length} games without lineups`);
+
     for (const game of gamesNeedingMockLineups) {
-      console.log(`Creating realistic mock lineup for test game ${game.game_id}`);
+      console.log(`Creating realistic mock lineup for game ${game.game_id}`);
       const mockLineups = createRealisticTestLineupForGame(game.game_id, game);
       lineups.push(...mockLineups);
       console.log(`✅ Added ${mockLineups.length} realistic mock lineup entries for game ${game.game_id}`);

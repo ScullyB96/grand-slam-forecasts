@@ -9,6 +9,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { PlayerStatsBackfillCard } from '@/components/PlayerStatsBackfillCard';
 import LineupMonitorCard from '@/components/LineupMonitorCard';
+import DataQualityDashboard from '@/components/DataQualityDashboard';
+import AutoLineupScheduler from '@/components/AutoLineupScheduler';
 
 const Admin = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -224,6 +226,11 @@ const Admin = () => {
           </p>
         </div>
 
+        {/* Data Quality Dashboard */}
+        <div className="mb-6">
+          <DataQualityDashboard />
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* System Status */}
           <Card>
@@ -356,8 +363,9 @@ const Admin = () => {
           {/* Player Statistics */}
           <PlayerStatsBackfillCard />
 
-          {/* Lineup Monitor */}
+          {/* Lineup Monitor & Scheduler */}
           <LineupMonitorCard />
+          <AutoLineupScheduler />
 
           {/* ML Pipeline */}
           <Card className="lg:col-span-2">
