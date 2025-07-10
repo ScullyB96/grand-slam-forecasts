@@ -17,3 +17,6 @@ port = 54323
 
 [functions.generate-predictions]
 verify_jwt = false
+
+[functions.ingest-schedule]
+verify_jwt = false

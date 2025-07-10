@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
-import { useGames } from '@/hooks/useGames';
+import { useGames, useIngestSchedule } from '@/hooks/useGames';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw } from 'lucide-react';
+import { Calendar, RefreshCw, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -37,9 +37,38 @@ const GameSelector: React.FC<GameSelectorProps> = ({
   onGameSelect,
   selectedGameId
 }) => {
-  const { data: games, isLoading, refetch } = useGames(selectedDate);
+  const { data: games, isLoading, error, refetch } = useGames(selectedDate);
+  const { refetch: triggerIngestion, isFetching: isIngesting } = useIngestSchedule();
   const [generatingPredictions, setGeneratingPredictions] = useState(false);
   const { toast } = useToast();
+
+  const handleIngestSchedule = async () => {
+    try {
+      console.log('Triggering schedule ingestion...');
+      const result = await triggerIngestion();
+      
+      if (result.data?.success) {
+        toast({
+          title: "Schedule Updated",
+          description: `Ingested ${result.data.gamesProcessed} games for ${selectedDate}`
+        });
+        
+        // Refresh games after ingestion
+        setTimeout(() => {
+          refetch();
+        }, 1000);
+      } else {
+        throw new Error(result.data?.error || 'Ingestion failed');
+      }
+    } catch (error) {
+      console.error('Error ingesting schedule:', error);
+      toast({
+        title: "Ingestion Failed",
+        description: "Failed to fetch schedule from MLB API. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const handleGeneratePredictions = async () => {
     if (!games || games.length === 0) return;
@@ -81,6 +110,34 @@ const GameSelector: React.FC<GameSelectorProps> = ({
     return format(new Date(`2000-01-01T${game.game_time}`), 'h:mm a');
   };
 
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <Calendar className="h-5 w-5" />
+            Error Loading Games
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-4">
+            Failed to load games: {error.message}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+            <Button variant="outline" onClick={handleIngestSchedule} disabled={isIngesting}>
+              <Download className="h-4 w-4 mr-2" />
+              {isIngesting ? 'Fetching...' : 'Fetch Schedule'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (isLoading) {
     return (
       <Card>
@@ -118,6 +175,15 @@ const GameSelector: React.FC<GameSelectorProps> = ({
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleIngestSchedule}
+            disabled={isIngesting}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {isIngesting ? 'Fetching...' : 'Fetch Schedule'}
+          </Button>
+          <Button
             variant="default"
             size="sm"
             onClick={handleGeneratePredictions}
@@ -145,8 +211,22 @@ const GameSelector: React.FC<GameSelectorProps> = ({
         </div>
         
         {!games || games.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            No games scheduled for this date
+          <div className="text-center py-8 space-y-4">
+            <div className="text-muted-foreground">
+              No games found for this date
+            </div>
+            <div className="text-sm text-muted-foreground">
+              Try fetching the latest schedule from MLB
+            </div>
+            <Button 
+              variant="outline" 
+              onClick={handleIngestSchedule}
+              disabled={isIngesting}
+              className="mt-2"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              {isIngesting ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
+            </Button>
           </div>
         ) : (
           <div className="space-y-2">

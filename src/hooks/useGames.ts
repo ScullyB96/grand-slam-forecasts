@@ -33,6 +33,8 @@ export const useGames = (date?: string) => {
   return useQuery({
     queryKey: ['games', date],
     queryFn: async () => {
+      console.log(`Fetching games for date: ${date || 'all'}`);
+      
       let query = supabase
         .from('games')
         .select(`
@@ -55,12 +57,38 @@ export const useGames = (date?: string) => {
         throw error;
       }
 
+      console.log(`Successfully fetched ${data?.length || 0} games`);
       return data as Game[];
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 10 * 60 * 1000, // 10 minutes
   });
 };
 
 export const useTodaysGames = () => {
   const today = new Date().toISOString().split('T')[0];
   return useGames(today);
+};
+
+// Hook to trigger schedule ingestion
+export const useIngestSchedule = () => {
+  return useQuery({
+    queryKey: ['ingest-schedule'],
+    queryFn: async () => {
+      console.log('Triggering schedule ingestion...');
+      
+      const { data, error } = await supabase.functions.invoke('ingest-schedule', {
+        body: { date: new Date().toISOString().split('T')[0] }
+      });
+
+      if (error) {
+        console.error('Error triggering schedule ingestion:', error);
+        throw error;
+      }
+
+      console.log('Schedule ingestion response:', data);
+      return data;
+    },
+    enabled: false, // Only run when manually triggered
+  });
 };
