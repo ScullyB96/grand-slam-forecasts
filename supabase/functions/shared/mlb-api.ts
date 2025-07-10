@@ -1,3 +1,4 @@
+
 /**
  * Centralized MLB Stats API helper functions
  * All MLB API calls should go through these functions for consistency
@@ -137,13 +138,51 @@ export async function getGameBoxscore(gamePk: number) {
 export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = null, teamIdMap?: Map<number, number>) {
   const lineups: any[] = [];
   
-  if (!boxscoreData?.teams) {
-    console.log('❌ No boxscore teams data available');
+  console.log('🔍 COMPREHENSIVE DEBUG - Raw boxscore data structure:');
+  console.log('  - boxscoreData keys:', Object.keys(boxscoreData || {}));
+  console.log('  - boxscoreData type:', typeof boxscoreData);
+  
+  if (!boxscoreData) {
+    console.log('❌ No boxscore data provided');
     return lineups;
   }
 
-  const teams = boxscoreData.teams;
-  const gameId = parseInt(gameData?.gameData?.pk || boxscoreData.gamePk || boxscoreData.game?.gamePk);
+  // Try multiple possible paths for teams data
+  let teams = null;
+  const possiblePaths = [
+    boxscoreData.teams,
+    boxscoreData.liveData?.boxscore?.teams,
+    boxscoreData.boxscore?.teams
+  ];
+
+  for (const path of possiblePaths) {
+    if (path && typeof path === 'object' && (path.home || path.away)) {
+      teams = path;
+      console.log('✅ Found teams data at path');
+      break;
+    }
+  }
+
+  if (!teams) {
+    console.log('❌ No teams data found in any expected location');
+    console.log('Available top-level keys:', Object.keys(boxscoreData));
+    if (boxscoreData.liveData) {
+      console.log('liveData keys:', Object.keys(boxscoreData.liveData));
+      if (boxscoreData.liveData.boxscore) {
+        console.log('boxscore keys:', Object.keys(boxscoreData.liveData.boxscore));
+      }
+    }
+    return lineups;
+  }
+
+  // Try to get gameId from various sources
+  const gameId = parseInt(
+    gameData?.gameData?.pk || 
+    boxscoreData.gamePk || 
+    boxscoreData.game?.gamePk ||
+    boxscoreData.gameData?.pk ||
+    0
+  );
   
   console.log('🔍 DEBUG - Starting lineup extraction');
   console.log(`  - Game ID: ${gameId}`);
@@ -153,8 +192,18 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
   ['home', 'away'].forEach(teamType => {
     const teamData = teams[teamType];
     
-    if (!teamData?.team?.id) {
-      console.log(`❌ No team data available for ${teamType} team`);
+    console.log(`\n🏈 Processing ${teamType} team:`);
+    console.log(`  - Team data available: ${!!teamData}`);
+    
+    if (!teamData) {
+      console.log(`❌ No ${teamType} team data`);
+      return;
+    }
+
+    console.log(`  - Team data keys: ${Object.keys(teamData)}`);
+    
+    if (!teamData.team?.id) {
+      console.log(`❌ No team ID for ${teamType} team`);
       return;
     }
 
@@ -164,31 +213,49 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
     
     if (!dbTeamId) {
       console.error(`❌ No mapping found for MLB team ID ${mlbTeamId} (${teamData.team.name})`);
-      console.log('Available mappings:', Array.from(teamIdMap?.entries() || []));
+      console.log('Available team mappings:', Array.from(teamIdMap?.entries() || []));
       return; // Skip this team if no mapping found
     }
     
     console.log(`✅ Processing ${teamData.team.name} (MLB ID: ${mlbTeamId} -> DB ID: ${dbTeamId})`);
 
-    // DEBUG: Log the structure we're working with
-    console.log(`🔍 DEBUG - ${teamType} team data structure:`);
-    console.log(`  - Has batters: ${!!teamData.batters} (length: ${teamData.batters?.length || 0})`);
-    console.log(`  - Has pitchers: ${!!teamData.pitchers} (length: ${teamData.pitchers?.length || 0})`);
-    console.log(`  - Has players: ${!!teamData.players} (keys: ${teamData.players ? Object.keys(teamData.players).length : 0})`);
+    // DEBUG: Log the complete structure for this team
+    console.log(`🔍 COMPLETE ${teamType} team structure:`);
+    console.log(`  - Has batters: ${!!teamData.batters} (${Array.isArray(teamData.batters) ? teamData.batters.length : 'not array'})`);
+    console.log(`  - Has pitchers: ${!!teamData.pitchers} (${Array.isArray(teamData.pitchers) ? teamData.pitchers.length : 'not array'})`);
+    console.log(`  - Has players: ${!!teamData.players}`);
     
-    // Extract batting lineup from batters array
-    if (teamData.batters && teamData.batters.length > 0) {
+    if (teamData.batters) {
+      console.log(`  - Batters type: ${typeof teamData.batters}, is array: ${Array.isArray(teamData.batters)}`);
+      if (Array.isArray(teamData.batters)) {
+        console.log(`  - First 3 batters: ${teamData.batters.slice(0, 3)}`);
+      }
+    }
+    
+    if (teamData.players) {
+      const playerKeys = Object.keys(teamData.players);
+      console.log(`  - Players object has ${playerKeys.length} keys`);
+      console.log(`  - First 3 player keys: ${playerKeys.slice(0, 3)}`);
+    }
+
+    // Extract batting lineup
+    if (teamData.batters && Array.isArray(teamData.batters) && teamData.batters.length > 0) {
       console.log(`📋 Processing ${teamData.batters.length} batters for ${teamData.team.name}`);
       
       // Process first 9 batters as the starting lineup
-      teamData.batters.slice(0, 9).forEach((playerId: number, index: number) => {
-        const playerInfo = teamData.players?.[`ID${playerId}`];
+      const startingBatters = teamData.batters.slice(0, 9);
+      startingBatters.forEach((playerId: number, index: number) => {
+        const playerKey = `ID${playerId}`;
+        const playerInfo = teamData.players?.[playerKey];
+        
+        console.log(`  - Checking batter ${index + 1}: ID ${playerId}, playerKey: ${playerKey}`);
+        console.log(`    - Player info found: ${!!playerInfo}`);
         
         if (playerInfo?.person) {
           const position = playerInfo.position || {};
           const battingOrder = index + 1;
           
-          lineups.push({
+          const lineup = {
             game_id: gameId,
             team_id: dbTeamId,
             lineup_type: 'batting',
@@ -198,28 +265,35 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
             position: position.abbreviation || position.name || 'Unknown',
             handedness: playerInfo.person.batSide?.code || 'R',
             is_starter: true
-          });
+          };
           
+          lineups.push(lineup);
           console.log(`⚾ Added batter: ${playerInfo.person.fullName} (#${battingOrder}, ${position.abbreviation || position.name})`);
         } else {
-          console.log(`⚠️ No player info found for batter ID ${playerId}`);
+          console.log(`⚠️ No player info found for batter ID ${playerId} (key: ${playerKey})`);
+          if (teamData.players) {
+            console.log(`    - Available player keys: ${Object.keys(teamData.players).slice(0, 5)}`);
+          }
         }
       });
     } else {
-      console.log(`❌ No batters array or empty batters for ${teamType} team`);
+      console.log(`❌ No valid batters array for ${teamType} team`);
     }
 
-    // Extract pitchers (separate from batters)
-    if (teamData.pitchers && teamData.pitchers.length > 0) {
+    // Extract pitchers
+    if (teamData.pitchers && Array.isArray(teamData.pitchers) && teamData.pitchers.length > 0) {
       console.log(`🥎 Processing ${teamData.pitchers.length} pitchers for ${teamData.team.name}`);
       
       teamData.pitchers.forEach((playerId: number, index: number) => {
-        const playerInfo = teamData.players?.[`ID${playerId}`];
+        const playerKey = `ID${playerId}`;
+        const playerInfo = teamData.players?.[playerKey];
+        
+        console.log(`  - Checking pitcher ${index + 1}: ID ${playerId}`);
         
         if (playerInfo?.person) {
           const isStarter = index === 0; // First pitcher is typically the starter
           
-          lineups.push({
+          const lineup = {
             game_id: gameId,
             team_id: dbTeamId,
             lineup_type: 'pitching',
@@ -229,21 +303,29 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameData: any = nu
             position: isStarter ? 'SP' : 'RP',
             handedness: playerInfo.person.pitchHand?.code || 'R',
             is_starter: isStarter
-          });
+          };
           
+          lineups.push(lineup);
           console.log(`🏈 Added pitcher: ${playerInfo.person.fullName} (${isStarter ? 'SP' : 'RP'})`);
+        } else {
+          console.log(`⚠️ No player info found for pitcher ID ${playerId}`);
         }
       });
     } else {
-      console.log(`❌ No pitchers array or empty pitchers for ${teamType} team`);
+      console.log(`❌ No valid pitchers array for ${teamType} team`);
     }
   });
 
-  console.log(`✅ Extracted ${lineups.length} total lineup entries`);
+  console.log(`\n✅ EXTRACTION SUMMARY:`);
+  console.log(`  - Total lineups extracted: ${lineups.length}`);
   const battingCount = lineups.filter(l => l.lineup_type === 'batting').length;
   const pitchingCount = lineups.filter(l => l.lineup_type === 'pitching').length;
   console.log(`  - Batting lineups: ${battingCount}`);
   console.log(`  - Pitching lineups: ${pitchingCount}`);
+  
+  if (lineups.length > 0) {
+    console.log(`  - Sample lineup entry:`, lineups[0]);
+  }
   
   return lineups;
 }
