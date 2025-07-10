@@ -16,21 +16,22 @@ export const navItems = [
     page: <HomePage />,
   },
   {
-    title: "Dashboard",
-    to: "/dashboard",
-    icon: <Calendar className="h-4 w-4" />,
-    page: <Dashboard />,
-  },
-  {
     title: "Predictions",
     to: "/predictions",
     icon: <TrendingUp className="h-4 w-4" />,
     page: <Predictions />,
   },
-  {
-    title: "Stats",
-    to: "/stats",
-    icon: <BarChart3 className="h-4 w-4" />,
-    page: <Stats />,
-  },
+  // Hidden until ready
+  // {
+  //   title: "Dashboard",
+  //   to: "/dashboard",
+  //   icon: <Calendar className="h-4 w-4" />,
+  //   page: <Dashboard />,
+  // },
+  // {
+  //   title: "Stats",
+  //   to: "/stats",
+  //   icon: <BarChart3 className="h-4 w-4" />,
+  //   page: <Stats />,
+  // },
 ];

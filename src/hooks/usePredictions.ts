@@ -15,6 +15,7 @@ export interface GamePrediction {
   confidence_score?: number;
   key_factors?: any;
   prediction_date: string;
+  last_updated?: string;
 }
 
 export const usePredictions = (gameIds?: number[]) => {
@@ -51,7 +52,7 @@ export const useGamePrediction = (gameId: number) => {
         .from('game_predictions')
         .select('*')
         .eq('game_id', gameId)
-        .order('prediction_date', { ascending: false })
+        .order('last_updated', { ascending: false })
         .limit(1)
         .maybeSingle();
 

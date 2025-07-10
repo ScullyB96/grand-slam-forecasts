@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar, RefreshCw, Download, Bug, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import RefreshPredictionsButton from '@/components/RefreshPredictionsButton';
 
 interface Game {
   id: number;
@@ -138,9 +139,9 @@ const GameSelector: React.FC<GameSelectorProps> = ({
         description: `Generated predictions for ${games.length} games`
       });
 
-      // Refresh the predictions data
+      // Refresh the predictions data using React Query
       setTimeout(() => {
-        window.location.reload();
+        refetch();
       }, 1000);
 
     } catch (error) {
@@ -301,6 +302,13 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               'Generate Predictions'
             )}
           </Button>
+          {games && games.length > 0 && (
+            <RefreshPredictionsButton
+              gameIds={games.map(g => g.game_id)}
+              onRefresh={() => refetch()}
+              disabled={!isLastRunSuccessful}
+            />
+          )}
         </div>
       </CardHeader>
       
@@ -348,17 +356,29 @@ const GameSelector: React.FC<GameSelectorProps> = ({
               No games scheduled for this date
             </div>
             <div className="text-sm text-muted-foreground">
-              Try fetching the latest schedule from MLB
+              Try fetching the latest schedule from MLB or select a different date
             </div>
-            <Button 
-              variant="outline" 
-              onClick={handleFetchSchedule}
-              disabled={isFetching}
-              className="mt-2"
-            >
-              <Download className="h-4 w-4 mr-2" />
-              {isFetching ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
-            </Button>
+            <div className="flex gap-2 justify-center">
+              <Button 
+                variant="outline" 
+                onClick={handleFetchSchedule}
+                disabled={isFetching}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                {isFetching ? 'Fetching Schedule...' : 'Fetch MLB Schedule'}
+              </Button>
+              <Button 
+                variant="secondary"
+                onClick={() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  onDateChange(tomorrow.toISOString().split('T')[0]);
+                }}
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Try Tomorrow
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-2">

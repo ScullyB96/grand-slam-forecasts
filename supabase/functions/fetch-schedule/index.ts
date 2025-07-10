@@ -76,8 +76,16 @@ async function fetchMLBSchedule(date: string): Promise<MLBGame[]> {
     });
     
     if (!data.dates || !Array.isArray(data.dates)) {
-      console.error('Invalid API response structure - no dates array', data);
+      console.error('Invalid API response structure - no dates array', {
+        fullResponse: JSON.stringify(data, null, 2)
+      });
       throw new Error('Invalid API response structure: missing dates array');
+    }
+    
+    // Check if dates array is empty
+    if (data.dates.length === 0) {
+      console.log(`No games scheduled for ${formattedDate}`);
+      return [];
     }
     
     const games = data.dates.flatMap(dateEntry => {
@@ -476,7 +484,7 @@ Deno.serve(async (req) => {
     const games = await fetchMLBSchedule(targetDate);
 
     if (games.length === 0) {
-      console.log('No games found for the specified date');
+      console.log(`No games scheduled for ${targetDate}`);
       
       // Log completion with no games
       await logIngestionJob(supabase, {
@@ -484,7 +492,7 @@ Deno.serve(async (req) => {
         job_name: 'MLB Schedule Ingestion',
         job_type: 'schedule_ingestion',
         data_source: 'MLB Stats API',
-        status: 'completed',
+        status: 'no_games',
         started_at: startTime.toISOString(),
         completed_at: new Date().toISOString(),
         records_processed: 0,

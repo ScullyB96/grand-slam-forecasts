@@ -347,7 +347,8 @@ async function generatePrediction(
     under_probability: totalRuns > overUnderLine ? 0.48 : 0.52,
     confidence_score: confidence,
     key_factors: keyFactors,
-    prediction_date: new Date().toISOString()
+    prediction_date: new Date().toISOString(),
+    last_updated: new Date().toISOString()
   };
 }
 

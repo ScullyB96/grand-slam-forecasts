@@ -259,6 +259,7 @@ export type Database = {
           home_win_probability: number
           id: number
           key_factors: Json | null
+          last_updated: string | null
           over_probability: number | null
           over_under_line: number | null
           predicted_away_score: number | null
@@ -275,6 +276,7 @@ export type Database = {
           home_win_probability: number
           id?: number
           key_factors?: Json | null
+          last_updated?: string | null
           over_probability?: number | null
           over_under_line?: number | null
           predicted_away_score?: number | null
@@ -291,6 +293,7 @@ export type Database = {
           home_win_probability?: number
           id?: number
           key_factors?: Json | null
+          last_updated?: string | null
           over_probability?: number | null
           over_under_line?: number | null
           predicted_away_score?: number | null
