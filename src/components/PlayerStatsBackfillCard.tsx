@@ -137,7 +137,14 @@ export const PlayerStatsBackfillCard = () => {
 
           <Button 
             onClick={() => {
-              // Run comprehensive backfill for both 2025 rosters and 2024 stats
+              console.log('🎯 Starting Real Data Plan implementation...');
+              
+              // Step 1: Ingest 2025 rosters first
+              toast({
+                title: "Real Data Plan Started",
+                description: "Step 1: Ingesting 2025 player rosters...",
+              });
+              
               runBackfill({
                 season: 2025,
                 includeRosters: true,
@@ -145,8 +152,15 @@ export const PlayerStatsBackfillCard = () => {
                 includePitchingStats: false,
                 force: false
               }, {
-                onSuccess: () => {
-                  // After 2025 rosters, run 2024 stats
+                onSuccess: (rosterData) => {
+                  console.log('✅ 2025 rosters completed:', rosterData);
+                  
+                  toast({
+                    title: "2025 Rosters Complete",
+                    description: `Step 2: Now ingesting 2024 player statistics...`,
+                  });
+                  
+                  // Step 2: After successful roster ingestion, get 2024 stats
                   runBackfill({
                     season: 2024,
                     includeRosters: false,
@@ -154,25 +168,29 @@ export const PlayerStatsBackfillCard = () => {
                     includePitchingStats: true,
                     force: false
                   }, {
-                    onSuccess: (data) => {
+                    onSuccess: (statsData) => {
+                      console.log('✅ 2024 stats completed:', statsData);
+                      
                       toast({
-                        title: "Real Data Implementation Complete",
-                        description: "Successfully ingested 2025 rosters and 2024 player statistics. Monte Carlo simulation now uses real MLB data!",
+                        title: "Real Data Plan Complete",
+                        description: `Successfully ingested 2025 rosters (${rosterData.rosterResults?.playersInserted || 0} players) and 2024 statistics (${statsData.battingResults?.statsInserted || 0} batting, ${statsData.pitchingResults?.statsInserted || 0} pitching). Monte Carlo simulation now uses real MLB data!`,
                       });
                     },
                     onError: (error) => {
+                      console.error('❌ 2024 stats failed:', error);
                       toast({
                         title: "2024 Stats Backfill Failed",
-                        description: error.message,
+                        description: `Failed during Step 2 (statistics ingestion): ${error.message}`,
                         variant: "destructive",
                       });
                     }
                   });
                 },
                 onError: (error) => {
+                  console.error('❌ 2025 rosters failed:', error);
                   toast({
                     title: "2025 Roster Backfill Failed",
-                    description: error.message,
+                    description: `Failed during Step 1 (roster ingestion): ${error.message}`,
                     variant: "destructive",
                   });
                 }
@@ -201,6 +219,11 @@ export const PlayerStatsBackfillCard = () => {
           <p>• Rosters: Player profiles and team assignments</p>
           <p>• Batting Stats: Offensive statistics for all position players</p>
           <p>• Pitching Stats: Pitching statistics for all pitchers</p>
+          
+          <div className="mt-3 p-3 bg-muted/50 rounded-md">
+            <p className="font-medium text-foreground mb-1">Real Data Plan:</p>
+            <p>Fixes the model's data-season mismatch by ingesting 2025 rosters combined with 2024 historical stats. This provides the Monte Carlo simulation with current team compositions and proven performance data for accurate predictions.</p>
+          </div>
         </div>
       </CardContent>
     </Card>
