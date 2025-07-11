@@ -1,13 +1,15 @@
+// src/pages/Predictions.tsx
 
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import Header from '@/components/Header';
 import GameSelector from '@/components/GameSelector';
 import PredictionCard from '@/components/PredictionCard';
 import { useGames } from '@/hooks/useGames';
 import { useGamePrediction } from '@/hooks/usePredictions';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, Calendar } from 'lucide-react';
+import { TrendingUp, Calendar, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Predictions = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -22,22 +24,38 @@ const Predictions = () => {
   const { data: games } = useGames(selectedDate);
   const { data: prediction, isLoading: predictionLoading } = useGamePrediction(selectedGameId || 0);
 
-  // Update URL when selections change
   useEffect(() => {
     const params = new URLSearchParams();
     params.set('date', selectedDate);
     if (selectedGameId) {
       params.set('game', selectedGameId.toString());
     }
-    setSearchParams(params);
+    setSearchParams(params, { replace: true });
   }, [selectedDate, selectedGameId, setSearchParams]);
 
   const handleDateChange = (date: string) => {
     setSelectedDate(date);
-    setSelectedGameId(undefined); // Clear game selection when date changes
+    setSelectedGameId(undefined);
   };
 
   const selectedGame = games?.find(game => game.game_id === selectedGameId);
+
+  const renderNoPredictionState = () => (
+    <Card className="h-96 flex items-center justify-center">
+      <CardContent className="text-center">
+        <AlertCircle className="h-16 w-16 mx-auto mb-4 text-destructive" />
+        <h3 className="text-xl font-semibold mb-2">No Prediction Available</h3>
+        <p className="text-muted-foreground mb-4">
+          This is likely because the official lineups have not been released yet.
+        </p>
+        <div className="text-sm text-muted-foreground space-y-2">
+            <p>1. Go to the <Button variant="link" className="p-0 h-4" asChild><Link to="/admin">Admin Panel</Link></Button> and click "Fetch Lineups".</p>
+            <p>2. If lineups are available, return here and click "Generate Predictions".</p>
+            <p>(Lineups are typically available 1-2 hours before game time)</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -55,7 +73,6 @@ const Predictions = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Game Selection */}
           <div className="lg:col-span-1">
             <GameSelector
               selectedDate={selectedDate}
@@ -64,8 +81,6 @@ const Predictions = () => {
               selectedGameId={selectedGameId}
             />
           </div>
-
-          {/* Prediction Display */}
           <div className="lg:col-span-2">
             {!selectedGameId ? (
               <Card className="h-96 flex items-center justify-center">
@@ -82,24 +97,10 @@ const Predictions = () => {
                 <CardContent className="text-center">
                   <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary mx-auto mb-4"></div>
                   <h3 className="text-xl font-semibold mb-2">Loading Prediction...</h3>
-                  <p className="text-muted-foreground">
-                    Fetching analysis for the selected game
-                  </p>
                 </CardContent>
               </Card>
             ) : !prediction ? (
-              <Card className="h-96 flex items-center justify-center">
-                <CardContent className="text-center">
-                  <TrendingUp className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-xl font-semibold mb-2">No Prediction Available</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Prediction hasn't been generated for this game yet
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Try generating predictions using the button in the game selector
-                  </p>
-                </CardContent>
-              </Card>
+              renderNoPredictionState()
             ) : selectedGame ? (
               <PredictionCard
                 prediction={prediction}
