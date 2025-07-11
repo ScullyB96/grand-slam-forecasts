@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import PredictionQualityIndicator from './PredictionQualityIndicator';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
@@ -128,9 +129,7 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
               {awayTeam.abbreviation} @ {homeTeam.abbreviation}
             </CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant={getConfidenceColor(prediction.confidence_score)}>
-                {getConfidenceText(prediction.confidence_score)} Confidence
-              </Badge>
+              <PredictionQualityIndicator prediction={prediction} />
               <Button
                 variant="ghost"
                 size="sm"

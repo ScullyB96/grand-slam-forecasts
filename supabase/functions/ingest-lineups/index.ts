@@ -147,51 +147,64 @@ serve(async (req) => {
           }
         }
 
-        // Fetch lineups from MLB Boxscore API
-        console.log(`📥 Fetching boxscore data for game ${gameId}`);
-        const boxscoreData = await getGameBoxscore(gameId);
+        // Try multiple API endpoints for lineup data
+        console.log(`📥 Fetching lineup data for game ${gameId}`);
+        let lineups = [];
+        let dataSource = 'none';
         
-        if (!boxscoreData) {
-          console.log(`❌ No boxscore data available for game ${gameId}`);
+        // First try: Boxscore API (official lineups)
+        try {
+          const boxscoreData = await getGameBoxscore(gameId);
+          if (boxscoreData) {
+            lineups = extractLineupsFromBoxscore(boxscoreData, gameId, teamIdMapping);
+            if (lineups.length > 0) {
+              dataSource = 'boxscore_official';
+              console.log(`✅ Got ${lineups.length} lineups from boxscore API`);
+            }
+          }
+        } catch (error) {
+          console.warn(`⚠️ Boxscore API failed for game ${gameId}:`, error.message);
+        }
+        
+        // Second try: Generate projected lineups if no official data
+        if (lineups.length === 0) {
+          console.log(`🔄 Generating projected lineups for game ${gameId}`);
+          try {
+            // Get team info for this game
+            const homeTeam = mlbGame.teams?.home?.team;
+            const awayTeam = mlbGame.teams?.away?.team;
+            
+            if (homeTeam && awayTeam) {
+              const homeTeamId = teamIdMapping.get(homeTeam.id);
+              const awayTeamId = teamIdMapping.get(awayTeam.id);
+              
+              if (homeTeamId && awayTeamId) {
+                lineups = await generateProjectedLineups(gameId, homeTeamId, awayTeamId, supabase);
+                if (lineups.length > 0) {
+                  dataSource = 'projected';
+                  console.log(`✅ Generated ${lineups.length} projected lineups`);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`⚠️ Projected lineup generation failed for game ${gameId}:`, error.message);
+          }
+        }
+        
+        if (lineups.length === 0) {
+          console.log(`❌ No lineup data available for game ${gameId} from any source`);
           failedGames.push({
             gamePk: gameId,
-            error: 'No boxscore data available'
+            error: 'No lineup data available from any source'
           });
           continue;
         }
 
-        // DEBUG: Log the raw structure to understand the JSON
-        console.log(`🔍 DEBUG - Raw boxscore structure for game ${gameId}:`);
-        console.log(`  - Has teams: ${!!boxscoreData.teams}`);
-        
-        if (boxscoreData.teams) {
-          console.log(`  - Teams keys: ${Object.keys(boxscoreData.teams)}`);
-          
-          if (boxscoreData.teams.home) {
-            const homeTeam = boxscoreData.teams.home;
-            console.log(`  - Home team: ${homeTeam.team?.name} (ID: ${homeTeam.team?.id})`);
-            console.log(`  - Home team available keys: ${Object.keys(homeTeam)}`);
-            console.log(`  - Home batters: ${homeTeam.batters?.length || 0}`);
-            console.log(`  - Home pitchers: ${homeTeam.pitchers?.length || 0}`);
-            console.log(`  - Home lineup: ${homeTeam.lineup?.length || 0}`);
-            console.log(`  - Home battingOrder: ${homeTeam.battingOrder?.length || 0}`);
-            console.log(`  - Home players keys: ${homeTeam.players ? Object.keys(homeTeam.players).length : 0}`);
-          }
-          
-          if (boxscoreData.teams.away) {
-            const awayTeam = boxscoreData.teams.away;
-            console.log(`  - Away team: ${awayTeam.team?.name} (ID: ${awayTeam.team?.id})`);
-            console.log(`  - Away team available keys: ${Object.keys(awayTeam)}`);
-            console.log(`  - Away batters: ${awayTeam.batters?.length || 0}`);
-            console.log(`  - Away pitchers: ${awayTeam.pitchers?.length || 0}`);
-            console.log(`  - Away lineup: ${awayTeam.lineup?.length || 0}`);
-            console.log(`  - Away battingOrder: ${awayTeam.battingOrder?.length || 0}`);
-            console.log(`  - Away players keys: ${awayTeam.players ? Object.keys(awayTeam.players).length : 0}`);
-          }
-        }
-
-        // Extract lineups using the corrected MLB API helper
-        const lineups = extractLineupsFromBoxscore(boxscoreData, gameId, teamIdMapping);
+        // Add data source metadata to lineups
+        lineups.forEach(lineup => {
+          lineup.data_source = dataSource;
+          lineup.is_projected = dataSource === 'projected';
+        });
         
         console.log(`📊 Lineup extraction results for game ${gameId}:`);
         console.log(`  - Total lineups extracted: ${lineups.length}`);

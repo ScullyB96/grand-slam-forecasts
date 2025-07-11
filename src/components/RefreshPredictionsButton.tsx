@@ -22,7 +22,7 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
   const [isIngesting, setIsIngesting] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
 
-  const handleRefreshPredictions = () => {
+  const handleRefreshPredictions = async () => {
     if (!gameIds || gameIds.length === 0) {
       toast({
         title: "No Games Available",
@@ -33,33 +33,50 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
     }
 
     toast({
-      title: "Generating Predictions",
-      description: "Fetching lineups and running Monte Carlo simulations..."
+      title: "Generating Enhanced Predictions",
+      description: "Using enhanced prediction engine with adaptive modeling..."
     });
 
-    generatePredictions(undefined, {
-      onSuccess: (data) => {
-        toast({
-          title: "Monte Carlo Predictions Generated",
-          description: `Generated predictions for ${data?.processed || gameIds.length} games using advanced Monte Carlo simulation`
-        });
-
-        // Call the refresh callback
-        if (onRefresh) {
-          setTimeout(() => {
-            onRefresh();
-          }, 1000);
+    try {
+      const { data, error } = await supabase.functions.invoke('enhanced-prediction-engine', {
+        body: { 
+          game_ids: gameIds,
+          date: new Date().toISOString().split('T')[0]
         }
-      },
-      onError: (error) => {
-        console.error('Error refreshing predictions:', error);
-        toast({
-          title: "Refresh Failed",
-          description: error instanceof Error ? error.message : "Unknown error occurred",
-          variant: "destructive"
-        });
+      });
+
+      if (error) throw error;
+
+      const methodCounts = data.results?.reduce((acc: any, result: any) => {
+        if (result.method) {
+          acc[result.method] = (acc[result.method] || 0) + 1;
+        }
+        return acc;
+      }, {}) || {};
+
+      const methodSummary = Object.entries(methodCounts)
+        .map(([method, count]) => `${count} ${method.replace('_', ' ')}`)
+        .join(', ');
+
+      toast({
+        title: "Enhanced Predictions Generated",
+        description: `Generated ${data.successful_predictions}/${data.total_games} predictions: ${methodSummary}`
+      });
+
+      // Call the refresh callback
+      if (onRefresh) {
+        setTimeout(() => {
+          onRefresh();
+        }, 1000);
       }
-    });
+    } catch (error) {
+      console.error('Error refreshing predictions:', error);
+      toast({
+        title: "Enhanced Prediction Failed",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleMonitorLineups = async () => {
@@ -209,10 +226,10 @@ const RefreshPredictionsButton: React.FC<RefreshPredictionsButtonProps> = ({
         variant="outline"
         size="sm"
         onClick={handleRefreshPredictions}
-        disabled={disabled || isPending || !gameIds?.length}
+        disabled={disabled || !gameIds?.length}
       >
-        <RefreshCw className={`h-4 w-4 mr-2 ${isPending ? 'animate-spin' : ''}`} />
-        {isPending ? 'Generating Monte Carlo Predictions...' : 'Generate Monte Carlo Predictions'}
+        <RefreshCw className={`h-4 w-4 mr-2`} />
+        Enhanced Predictions
       </Button>
     </div>
   );

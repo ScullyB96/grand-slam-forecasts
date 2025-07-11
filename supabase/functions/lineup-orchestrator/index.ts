@@ -140,18 +140,18 @@ serve(async (req) => {
 
     console.log('✅ Lineup monitoring completed:', monitorResult);
 
-    // Step 7: Generate predictions with available data
-    console.log('🔮 Step 7: Generating predictions...');
-    const { data: predictionResult, error: predictionError } = await supabase.functions.invoke('generate-predictions', {
+    // Step 7: Generate enhanced predictions with available data
+    console.log('🔮 Step 7: Generating enhanced predictions...');
+    const { data: predictionResult, error: predictionError } = await supabase.functions.invoke('enhanced-prediction-engine', {
       body: { date: targetDate }
     });
 
     if (predictionError) {
-      console.error('Prediction generation failed:', predictionError);
+      console.error('Enhanced prediction generation failed:', predictionError);
       // Don't throw error - return without predictions
     }
 
-    console.log('✅ Prediction generation completed:', predictionResult);
+    console.log('✅ Enhanced prediction generation completed:', predictionResult);
 
     // Final summary
     const summary = {
