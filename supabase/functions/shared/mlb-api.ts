@@ -52,6 +52,7 @@ function mapPositionCode(positionCode: string | number): string {
 // Enhanced handedness extraction with detailed debugging
 function extractBattingHandedness(player: any, playerName: string): string {
   console.log(`🔍 DEBUG - Extracting batting handedness for ${playerName}:`);
+  console.log(`  Raw player object:`, JSON.stringify(player, null, 2));
   
   // Check all possible locations for batting handedness
   const sources = [
@@ -99,12 +100,13 @@ function extractBattingHandedness(player: any, playerName: string): string {
     if (desc.includes('switch')) return 'S';
   }
   
-  console.log(`  ❌ No batting handedness found for ${playerName}`);
-  return 'U';
+  console.log(`  ❌ No batting handedness found for ${playerName}, returning 'R' as default`);
+  return 'R'; // Default to right-handed instead of 'U'
 }
 
 function extractPitchingHandedness(player: any, playerName: string): string {
   console.log(`🔍 DEBUG - Extracting pitching handedness for ${playerName}:`);
+  console.log(`  Raw player object:`, JSON.stringify(player, null, 2));
   
   // Check all possible locations for pitching handedness
   const sources = [
@@ -150,8 +152,8 @@ function extractPitchingHandedness(player: any, playerName: string): string {
     if (desc.includes('right')) return 'R';
   }
   
-  console.log(`  ❌ No pitching handedness found for ${playerName}`);
-  return 'U';
+  console.log(`  ❌ No pitching handedness found for ${playerName}, returning 'R' as default`);
+  return 'R'; // Default to right-handed instead of 'U'
 }
 
 export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, teamIdMapping: Map<number, number>): any[] {
@@ -206,7 +208,9 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
               person: playerInfo.person,
               position: playerInfo.position,
               battingOrder: index + 1,
-              stats: playerInfo.stats
+              stats: playerInfo.stats,
+              // Include the full player info for handedness extraction
+              ...playerInfo
             });
           } else {
             console.log(`    No detailed info for batter ${playerId}`);
@@ -252,7 +256,7 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
           position = player.position.name;
         }
         
-        // Extract batting handedness with enhanced debugging
+        // Extract batting handedness with enhanced debugging - pass the full player object
         const battingHand = extractBattingHandedness(player, player.person.fullName);
         
         lineups.push({
@@ -286,7 +290,7 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
 
         const isStarter = index === 0; // First pitcher is the starter
         
-        // Extract pitching handedness with enhanced debugging
+        // Extract pitching handedness with enhanced debugging - pass the full playerInfo object
         const pitchingHand = extractPitchingHandedness(playerInfo, playerInfo.person.fullName);
         
         lineups.push({
