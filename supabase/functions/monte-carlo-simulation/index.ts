@@ -99,8 +99,10 @@ serve(async (req) => {
       throw new Error(`Insufficient lineup data - need at least 8 batters per team`);
     }
 
-    // Get player stats for all batters
+    // Get player stats for all batters - now using Statcast data
     const allBatterIds = [...homeBatters, ...awayBatters].map(p => p.player_id);
+    
+    // Fetch traditional batting stats
     const { data: batterStats, error: batterStatsError } = await supabase
       .from('batting_stats')
       .select('*')
@@ -111,7 +113,18 @@ serve(async (req) => {
       console.error('Error fetching batter stats:', batterStatsError);
     }
 
-    // Get pitcher stats
+    // Fetch Statcast data for batters
+    const { data: batterStatcast, error: batterStatcastError } = await supabase
+      .from('player_statcast')
+      .select('*')
+      .in('player_id', allBatterIds)
+      .eq('season', 2025);
+
+    if (batterStatcastError) {
+      console.error('Error fetching batter Statcast data:', batterStatcastError);
+    }
+
+    // Get pitcher stats - traditional and Statcast
     const pitcherIds = [homeStartingPitcher?.player_id, awayStartingPitcher?.player_id].filter(Boolean);
     const { data: pitcherStats, error: pitcherStatsError } = await supabase
       .from('pitching_stats')
@@ -121,6 +134,17 @@ serve(async (req) => {
 
     if (pitcherStatsError) {
       console.error('Error fetching pitcher stats:', pitcherStatsError);
+    }
+
+    // Fetch Statcast data for pitchers
+    const { data: pitcherStatcast, error: pitcherStatcastError } = await supabase
+      .from('player_statcast')
+      .select('*')
+      .in('player_id', pitcherIds)
+      .eq('season', 2025);
+
+    if (pitcherStatcastError) {
+      console.error('Error fetching pitcher Statcast data:', pitcherStatcastError);
     }
 
     // Get park factors
@@ -149,6 +173,8 @@ serve(async (req) => {
       awayStartingPitcher,
       batterStats: batterStats || [],
       pitcherStats: pitcherStats || [],
+      batterStatcast: batterStatcast || [],
+      pitcherStatcast: pitcherStatcast || [],
       parkFactors,
       weatherData,
       iterations
@@ -194,6 +220,8 @@ async function runMonteCarloSimulation(params: any) {
     awayStartingPitcher,
     batterStats,
     pitcherStats,
+    batterStatcast,
+    pitcherStatcast,
     parkFactors,
     weatherData,
     iterations 
@@ -217,6 +245,17 @@ async function runMonteCarloSimulation(params: any) {
     pitcherStatsMap.set(stats.player_id, stats);
   });
 
+  // Create Statcast lookup maps
+  const batterStatcastMap = new Map();
+  batterStatcast.forEach((stats: any) => {
+    batterStatcastMap.set(stats.player_id, stats);
+  });
+
+  const pitcherStatcastMap = new Map();
+  pitcherStatcast.forEach((stats: any) => {
+    pitcherStatcastMap.set(stats.player_id, stats);
+  });
+
   // Environmental factors
   const parkRunsFactor = parkFactors?.runs_factor || 1.0;
   const parkHRFactor = parkFactors?.hr_factor || 1.0;
@@ -238,6 +277,8 @@ async function runMonteCarloSimulation(params: any) {
       awayStartingPitcher,
       batterStatsMap,
       pitcherStatsMap,
+      batterStatcastMap,
+      pitcherStatcastMap,
       parkRunsFactor,
       parkHRFactor,
       weatherRunsMultiplier * homeAdvantage
@@ -249,6 +290,8 @@ async function runMonteCarloSimulation(params: any) {
       homeStartingPitcher,
       batterStatsMap,
       pitcherStatsMap,
+      batterStatcastMap,
+      pitcherStatcastMap,
       parkRunsFactor,
       parkHRFactor,
       weatherRunsMultiplier
@@ -313,6 +356,8 @@ function simulateTeamOffense(
   opposingPitcher: any,
   batterStatsMap: Map<number, any>,
   pitcherStatsMap: Map<number, any>,
+  batterStatcastMap: Map<number, any>,
+  pitcherStatcastMap: Map<number, any>,
   parkRunsFactor: number,
   parkHRFactor: number,
   weatherMultiplier: number
@@ -328,15 +373,37 @@ function simulateTeamOffense(
   // Pitcher effectiveness multiplier (lower ERA = harder to score against)
   const pitcherEffectiveness = Math.min(1.3, Math.max(0.7, pitcherERA / 4.50));
 
+  // Get opposing pitcher Statcast data for enhanced modeling
+  const pitcherStatcast = opposingPitcher ? pitcherStatcastMap.get(opposingPitcher.player_id) : null;
+  
   for (const batter of batters) {
     const batterStats = batterStatsMap.get(batter.player_id);
+    const batterStatcast = batterStatcastMap.get(batter.player_id);
     
-    // Use stats if available, otherwise use positional defaults
+    // Use Statcast data if available, fallback to traditional stats, then positional defaults
     let battingAvg = 0.250;
     let onBasePercentage = 0.320;
     let sluggingPercentage = 0.400;
+    let barrelRate = 0.06; // Default 6% barrel rate
+    let hardHitRate = 0.35; // Default 35% hard hit rate
+    let exitVelo = 89.0; // Default average exit velocity
+    let launchAngle = 10.0; // Default launch angle
+    let xwOBA = 0.320; // Default expected wOBA
     
-    if (batterStats && batterStats.at_bats > 50) { // Minimum AB threshold
+    // Prioritize Statcast data for enhanced accuracy
+    if (batterStatcast) {
+      barrelRate = (batterStatcast.barrel_pct || 6.0) / 100;
+      hardHitRate = (batterStatcast.hard_hit_pct || 35.0) / 100;
+      exitVelo = batterStatcast.avg_exit_velocity || 89.0;
+      launchAngle = batterStatcast.avg_launch_angle || 10.0;
+      xwOBA = batterStatcast.xwoba || 0.320;
+      
+      // Use xStats if available for more accurate projections
+      if (batterStatcast.xba) battingAvg = batterStatcast.xba;
+      if (batterStatcast.xobp) onBasePercentage = batterStatcast.xobp;
+      if (batterStatcast.xslg) sluggingPercentage = batterStatcast.xslg;
+    } else if (batterStats && batterStats.at_bats > 50) {
+      // Fallback to traditional stats
       battingAvg = batterStats.avg || 0.250;
       onBasePercentage = batterStats.obp || 0.320;
       sluggingPercentage = batterStats.slg || 0.400;
@@ -347,48 +414,89 @@ function simulateTeamOffense(
         battingAvg = 0.270;
         onBasePercentage = 0.340;
         sluggingPercentage = 0.480;
+        barrelRate = 0.08;
+        hardHitRate = 0.40;
+        exitVelo = 91.0;
       } else if (['C', 'SS'].includes(position)) {
         battingAvg = 0.240;
         onBasePercentage = 0.310;
         sluggingPercentage = 0.380;
+        barrelRate = 0.05;
+        hardHitRate = 0.30;
+        exitVelo = 87.0;
       }
     }
 
-    // Apply pitcher and environmental effects
-    const adjustedOBP = onBasePercentage * (1 / pitcherEffectiveness) * weatherMultiplier;
+    // Enhanced pitcher effects using Statcast data
+    let pitcherAdjustment = pitcherEffectiveness;
+    if (pitcherStatcast) {
+      // Adjust based on pitcher's Statcast metrics
+      const whiffRate = (pitcherStatcast.whiff_pct || 25.0) / 100;
+      const chaseRate = (pitcherStatcast.chase_pct || 30.0) / 100;
+      const avgVelo = pitcherStatcast.avg_fastball_velocity || 92.0;
+      
+      // Higher whiff rate = harder to hit
+      pitcherAdjustment *= (1 - (whiffRate - 0.25) * 0.5);
+      // Higher velocity = harder to barrel up
+      pitcherAdjustment *= (1 - Math.max(0, (avgVelo - 92.0)) * 0.01);
+    }
+
+    // Apply pitcher, park, and weather effects with Statcast precision
+    const adjustedOBP = onBasePercentage * (1 / pitcherAdjustment) * weatherMultiplier;
     const adjustedSLG = sluggingPercentage * parkRunsFactor * weatherMultiplier;
+    const adjustedBarrelRate = barrelRate * parkHRFactor * weatherMultiplier;
+    const adjustedHardHitRate = hardHitRate * parkRunsFactor * weatherMultiplier;
     
-    // Simulate plate appearance
+    // Enhanced outcome simulation using Statcast probabilities
     const randomValue = Math.random();
     
-    if (randomValue < adjustedOBP * 0.8) { // On base event
-      const extraBaseProbability = (adjustedSLG - battingAvg) / 3; // Simplified extra base calculation
+    // First check for barrel (most likely to be a hit/homer)
+    if (Math.random() < adjustedBarrelRate) {
+      // Barrel outcomes are highly likely to be hits, often extra bases
+      if (Math.random() < 0.75) { // 75% of barrels are hits
+        if (Math.random() < 0.50) { // 50% of barrel hits are home runs
+          runs += baseRunners + 1; // Home run
+          baseRunners = 0;
+        } else { // Other barrel hits are typically doubles/triples
+          runs += Math.floor(baseRunners * 0.8) + (Math.random() < 0.6 ? 1 : 0);
+          baseRunners = Math.min(3, baseRunners + 1);
+        }
+      } else {
+        // Barrel that didn't fall for a hit (line drive outs, etc.)
+        if (baseRunners > 0 && Math.random() < 0.3) {
+          runs += Math.random() < 0.4 ? 1 : 0; // Productive out
+        }
+      }
+    } else if (Math.random() < adjustedHardHitRate && Math.random() < adjustedOBP) {
+      // Hard hit contact that's not a barrel
+      const extraBaseProbability = (adjustedSLG - battingAvg) / 2.5;
       
       if (Math.random() < extraBaseProbability) {
-        // Extra base hit - more likely to score runners and advance
-        runs += Math.floor(baseRunners * 0.7) + (Math.random() < 0.3 ? 1 : 0); // Sometimes batter scores too
+        // Extra base hit
+        runs += Math.floor(baseRunners * 0.7) + (Math.random() < 0.25 ? 1 : 0);
         baseRunners = Math.min(3, baseRunners + 1);
       } else {
-        // Single - advance runners
+        // Single
         runs += Math.floor(baseRunners * 0.4);
         baseRunners = Math.min(3, baseRunners + 1);
       }
-    } else if (randomValue < 0.70) { // Out - chance to advance runners
-      if (baseRunners > 0 && Math.random() < 0.15) {
-        runs += Math.random() < 0.3 ? 1 : 0; // Productive out
+    } else if (randomValue < adjustedOBP * 0.75) {
+      // Regular contact that results in a hit
+      if (Math.random() < 0.15) { // Small chance of extra bases
+        runs += Math.floor(baseRunners * 0.6);
+        baseRunners = Math.min(3, baseRunners + 1);
+      } else {
+        // Single
+        runs += Math.floor(baseRunners * 0.35);
+        baseRunners = Math.min(3, baseRunners + 1);
+      }
+    } else if (randomValue < 0.75) {
+      // Out with potential for productive at-bat
+      if (baseRunners > 0 && Math.random() < 0.12) {
+        runs += Math.random() < 0.25 ? 1 : 0; // Productive out
       }
     }
-    
-    // Home run check (separate calculation)
-    const hrRate = batterStats?.home_runs || 0;
-    const atBats = batterStats?.at_bats || 500;
-    const baseHRRate = hrRate > 0 ? hrRate / atBats : 0.025;
-    const adjustedHRRate = baseHRRate * parkHRFactor * weatherMultiplier;
-    
-    if (Math.random() < adjustedHRRate) {
-      runs += baseRunners + 1; // All runners score plus batter
-      baseRunners = 0;
-    }
+    // Else: Strikeout or other non-productive out
   }
 
   // Add remaining base runners with some probability

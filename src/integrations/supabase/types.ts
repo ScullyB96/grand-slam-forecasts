@@ -566,6 +566,72 @@ export type Database = {
           },
         ]
       }
+      hit_log: {
+        Row: {
+          at_bat_index: number
+          batter_id: number | null
+          created_at: string | null
+          game_pk: number
+          hc_x: number | null
+          hc_y: number | null
+          hit_distance_sc: number | null
+          hit_location: number | null
+          id: number
+          inning: number
+          inning_half: string
+          is_barrel: boolean | null
+          is_hard_hit: boolean | null
+          is_sweet_spot: boolean | null
+          launch_angle: number | null
+          launch_speed: number | null
+          pitcher_id: number | null
+          total_distance: number | null
+          trajectory: string | null
+        }
+        Insert: {
+          at_bat_index: number
+          batter_id?: number | null
+          created_at?: string | null
+          game_pk: number
+          hc_x?: number | null
+          hc_y?: number | null
+          hit_distance_sc?: number | null
+          hit_location?: number | null
+          id?: number
+          inning: number
+          inning_half: string
+          is_barrel?: boolean | null
+          is_hard_hit?: boolean | null
+          is_sweet_spot?: boolean | null
+          launch_angle?: number | null
+          launch_speed?: number | null
+          pitcher_id?: number | null
+          total_distance?: number | null
+          trajectory?: string | null
+        }
+        Update: {
+          at_bat_index?: number
+          batter_id?: number | null
+          created_at?: string | null
+          game_pk?: number
+          hc_x?: number | null
+          hc_y?: number | null
+          hit_distance_sc?: number | null
+          hit_location?: number | null
+          id?: number
+          inning?: number
+          inning_half?: string
+          is_barrel?: boolean | null
+          is_hard_hit?: boolean | null
+          is_sweet_spot?: boolean | null
+          launch_angle?: number | null
+          launch_speed?: number | null
+          pitcher_id?: number | null
+          total_distance?: number | null
+          trajectory?: string | null
+        }
+        Relationships: []
+      }
       lineup_ingestion_jobs: {
         Row: {
           completed_at: string | null
@@ -758,6 +824,117 @@ export type Database = {
           updated_at?: string | null
           venue_name?: string
           walks_factor?: number | null
+        }
+        Relationships: []
+      }
+      pitch_log: {
+        Row: {
+          at_bat_index: number
+          ax: number | null
+          ay: number | null
+          az: number | null
+          batter_id: number | null
+          break_angle: number | null
+          break_length: number | null
+          created_at: string | null
+          description: string | null
+          end_speed: number | null
+          extension: number | null
+          game_pk: number
+          id: number
+          inning: number
+          inning_half: string
+          pitch_name: string | null
+          pitch_number: number
+          pitch_type: string | null
+          pitcher_id: number | null
+          plate_time: number | null
+          px: number | null
+          pz: number | null
+          result_type: string | null
+          spin_direction: number | null
+          spin_rate: number | null
+          start_speed: number | null
+          type_confidence: number | null
+          vx0: number | null
+          vy0: number | null
+          vz0: number | null
+          x0: number | null
+          y0: number | null
+          z0: number | null
+          zone: number | null
+        }
+        Insert: {
+          at_bat_index: number
+          ax?: number | null
+          ay?: number | null
+          az?: number | null
+          batter_id?: number | null
+          break_angle?: number | null
+          break_length?: number | null
+          created_at?: string | null
+          description?: string | null
+          end_speed?: number | null
+          extension?: number | null
+          game_pk: number
+          id?: number
+          inning: number
+          inning_half: string
+          pitch_name?: string | null
+          pitch_number: number
+          pitch_type?: string | null
+          pitcher_id?: number | null
+          plate_time?: number | null
+          px?: number | null
+          pz?: number | null
+          result_type?: string | null
+          spin_direction?: number | null
+          spin_rate?: number | null
+          start_speed?: number | null
+          type_confidence?: number | null
+          vx0?: number | null
+          vy0?: number | null
+          vz0?: number | null
+          x0?: number | null
+          y0?: number | null
+          z0?: number | null
+          zone?: number | null
+        }
+        Update: {
+          at_bat_index?: number
+          ax?: number | null
+          ay?: number | null
+          az?: number | null
+          batter_id?: number | null
+          break_angle?: number | null
+          break_length?: number | null
+          created_at?: string | null
+          description?: string | null
+          end_speed?: number | null
+          extension?: number | null
+          game_pk?: number
+          id?: number
+          inning?: number
+          inning_half?: string
+          pitch_name?: string | null
+          pitch_number?: number
+          pitch_type?: string | null
+          pitcher_id?: number | null
+          plate_time?: number | null
+          px?: number | null
+          pz?: number | null
+          result_type?: string | null
+          spin_direction?: number | null
+          spin_rate?: number | null
+          start_speed?: number | null
+          type_confidence?: number | null
+          vx0?: number | null
+          vy0?: number | null
+          vz0?: number | null
+          x0?: number | null
+          y0?: number | null
+          z0?: number | null
+          zone?: number | null
         }
         Relationships: []
       }
@@ -955,6 +1132,96 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      player_statcast: {
+        Row: {
+          avg_exit_velocity: number | null
+          avg_fastball_velocity: number | null
+          avg_launch_angle: number | null
+          avg_spin_rate: number | null
+          barrel_pct: number | null
+          chase_pct: number | null
+          created_at: string | null
+          extension: number | null
+          hard_hit_pct: number | null
+          horizontal_break: number | null
+          id: number
+          max_exit_velocity: number | null
+          max_fastball_velocity: number | null
+          outs_above_average: number | null
+          player_id: number
+          season: number
+          sprint_speed: number | null
+          sweet_spot_pct: number | null
+          team_id: number | null
+          updated_at: string | null
+          vertical_break: number | null
+          whiff_pct: number | null
+          xba: number | null
+          xobp: number | null
+          xops: number | null
+          xslg: number | null
+          xwoba: number | null
+        }
+        Insert: {
+          avg_exit_velocity?: number | null
+          avg_fastball_velocity?: number | null
+          avg_launch_angle?: number | null
+          avg_spin_rate?: number | null
+          barrel_pct?: number | null
+          chase_pct?: number | null
+          created_at?: string | null
+          extension?: number | null
+          hard_hit_pct?: number | null
+          horizontal_break?: number | null
+          id?: number
+          max_exit_velocity?: number | null
+          max_fastball_velocity?: number | null
+          outs_above_average?: number | null
+          player_id: number
+          season?: number
+          sprint_speed?: number | null
+          sweet_spot_pct?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          vertical_break?: number | null
+          whiff_pct?: number | null
+          xba?: number | null
+          xobp?: number | null
+          xops?: number | null
+          xslg?: number | null
+          xwoba?: number | null
+        }
+        Update: {
+          avg_exit_velocity?: number | null
+          avg_fastball_velocity?: number | null
+          avg_launch_angle?: number | null
+          avg_spin_rate?: number | null
+          barrel_pct?: number | null
+          chase_pct?: number | null
+          created_at?: string | null
+          extension?: number | null
+          hard_hit_pct?: number | null
+          horizontal_break?: number | null
+          id?: number
+          max_exit_velocity?: number | null
+          max_fastball_velocity?: number | null
+          outs_above_average?: number | null
+          player_id?: number
+          season?: number
+          sprint_speed?: number | null
+          sweet_spot_pct?: number | null
+          team_id?: number | null
+          updated_at?: string | null
+          vertical_break?: number | null
+          whiff_pct?: number | null
+          xba?: number | null
+          xobp?: number | null
+          xops?: number | null
+          xslg?: number | null
+          xwoba?: number | null
+        }
+        Relationships: []
       }
       players: {
         Row: {
