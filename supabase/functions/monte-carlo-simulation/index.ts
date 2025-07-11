@@ -138,6 +138,22 @@ async function runAdvancedMonteCarloSimulation(features: any, iterations: number
     statcastMap.set(stats.player_id, stats);
   });
 
+  // CRITICAL: Check if we have sufficient real data for accurate predictions
+  const battingStatsCount = features.player_stats.batting_stats.length;
+  const pitchingStatsCount = features.player_stats.pitching_stats.length;
+  const statcastCount = features.player_stats.statcast_data.length;
+  
+  console.log(`📊 Real data availability: ${battingStatsCount} batting stats, ${pitchingStatsCount} pitching stats, ${statcastCount} Statcast records`);
+  
+  // Require minimum real data to prevent fake predictions
+  if (pitchingStatsCount === 0) {
+    throw new Error('INSUFFICIENT_PITCHING_DATA: No pitching statistics available. Real Data Plan must be executed to ingest 2024 pitching stats before generating predictions.');
+  }
+  
+  if (battingStatsCount < 100) {
+    throw new Error('INSUFFICIENT_BATTING_DATA: Insufficient batting statistics available. Real Data Plan must be executed to ingest 2024 batting stats before generating predictions.');
+  }
+
   // Environmental factors
   const parkFactors = features.environmental.park_factors;
   const weatherData = features.environmental.weather_data;

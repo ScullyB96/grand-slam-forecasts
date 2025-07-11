@@ -125,10 +125,23 @@ const MonteCarloSimulationCard: React.FC<MonteCarloSimulationCardProps> = ({
           )}
 
           {error && (
-            <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-              <p className="text-sm text-destructive">
-                Simulation failed: {error.message}
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg space-y-3">
+              <p className="text-sm font-medium text-destructive">
+                Simulation Failed - Real Data Required
               </p>
+              <p className="text-sm text-destructive/80">
+                {error.message}
+              </p>
+              {(error.message.includes('INSUFFICIENT_PITCHING_DATA') || error.message.includes('INSUFFICIENT_BATTING_DATA')) && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded">
+                  <p className="text-sm text-blue-800 font-medium mb-2">
+                    🎯 Fix Required: Execute Real Data Plan
+                  </p>
+                  <p className="text-xs text-blue-700">
+                    Go to the Admin page and click "Implement Real Data Plan (2025 Rosters + 2024 Stats)" to ingest the necessary MLB data for accurate predictions.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
