@@ -49,6 +49,111 @@ function mapPositionCode(positionCode: string | number): string {
   return positionCodeMap[code] || code;
 }
 
+// Enhanced handedness extraction with detailed debugging
+function extractBattingHandedness(player: any, playerName: string): string {
+  console.log(`🔍 DEBUG - Extracting batting handedness for ${playerName}:`);
+  
+  // Check all possible locations for batting handedness
+  const sources = [
+    { name: 'person.batSide.code', value: player.person?.batSide?.code },
+    { name: 'person.batSide.description', value: player.person?.batSide?.description },
+    { name: 'person.batSide', value: player.person?.batSide },
+    { name: 'batSide.code', value: player.batSide?.code },
+    { name: 'batSide.description', value: player.batSide?.description },
+    { name: 'batSide', value: player.batSide },
+    { name: 'batting_hand', value: player.batting_hand },
+    { name: 'battingHand', value: player.battingHand }
+  ];
+  
+  sources.forEach(source => {
+    if (source.value !== undefined && source.value !== null) {
+      console.log(`  - ${source.name}: ${JSON.stringify(source.value)}`);
+    }
+  });
+  
+  // Try to extract from the most reliable sources first
+  if (player.person?.batSide?.code) {
+    console.log(`  ✅ Using person.batSide.code: ${player.person.batSide.code}`);
+    return player.person.batSide.code;
+  }
+  
+  if (player.person?.batSide?.description) {
+    const desc = player.person.batSide.description.toLowerCase();
+    console.log(`  ✅ Using person.batSide.description: ${desc}`);
+    if (desc.includes('left')) return 'L';
+    if (desc.includes('right')) return 'R';
+    if (desc.includes('switch')) return 'S';
+  }
+  
+  // Try alternative sources
+  if (player.batSide?.code) {
+    console.log(`  ✅ Using batSide.code: ${player.batSide.code}`);
+    return player.batSide.code;
+  }
+  
+  if (player.batSide?.description) {
+    const desc = player.batSide.description.toLowerCase();
+    console.log(`  ✅ Using batSide.description: ${desc}`);
+    if (desc.includes('left')) return 'L';
+    if (desc.includes('right')) return 'R';
+    if (desc.includes('switch')) return 'S';
+  }
+  
+  console.log(`  ❌ No batting handedness found for ${playerName}`);
+  return 'U';
+}
+
+function extractPitchingHandedness(player: any, playerName: string): string {
+  console.log(`🔍 DEBUG - Extracting pitching handedness for ${playerName}:`);
+  
+  // Check all possible locations for pitching handedness
+  const sources = [
+    { name: 'person.pitchHand.code', value: player.person?.pitchHand?.code },
+    { name: 'person.pitchHand.description', value: player.person?.pitchHand?.description },
+    { name: 'person.pitchHand', value: player.person?.pitchHand },
+    { name: 'pitchHand.code', value: player.pitchHand?.code },
+    { name: 'pitchHand.description', value: player.pitchHand?.description },
+    { name: 'pitchHand', value: player.pitchHand },
+    { name: 'pitching_hand', value: player.pitching_hand },
+    { name: 'pitchingHand', value: player.pitchingHand }
+  ];
+  
+  sources.forEach(source => {
+    if (source.value !== undefined && source.value !== null) {
+      console.log(`  - ${source.name}: ${JSON.stringify(source.value)}`);
+    }
+  });
+  
+  // Try to extract from the most reliable sources first
+  if (player.person?.pitchHand?.code) {
+    console.log(`  ✅ Using person.pitchHand.code: ${player.person.pitchHand.code}`);
+    return player.person.pitchHand.code;
+  }
+  
+  if (player.person?.pitchHand?.description) {
+    const desc = player.person.pitchHand.description.toLowerCase();
+    console.log(`  ✅ Using person.pitchHand.description: ${desc}`);
+    if (desc.includes('left')) return 'L';
+    if (desc.includes('right')) return 'R';
+  }
+  
+  // Try alternative sources
+  if (player.pitchHand?.code) {
+    console.log(`  ✅ Using pitchHand.code: ${player.pitchHand.code}`);
+    return player.pitchHand.code;
+  }
+  
+  if (player.pitchHand?.description) {
+    const desc = player.pitchHand.description.toLowerCase();
+    console.log(`  ✅ Using pitchHand.description: ${desc}`);
+    if (desc.includes('left')) return 'L';
+    if (desc.includes('right')) return 'R';
+  }
+  
+  console.log(`  ❌ No pitching handedness found for ${playerName}`);
+  return 'U';
+}
+
 export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, teamIdMapping: Map<number, number>): any[] {
   console.log(`🔍 Extracting lineups from boxscore for game ${gameId}`);
   
@@ -147,16 +252,8 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
           position = player.position.name;
         }
         
-        // Extract batting handedness - more comprehensive approach
-        let battingHand = 'U';
-        if (player.person?.batSide?.code) {
-          battingHand = player.person.batSide.code;
-        } else if (player.person?.batSide?.description) {
-          const desc = player.person.batSide.description.toLowerCase();
-          if (desc.includes('left')) battingHand = 'L';
-          else if (desc.includes('right')) battingHand = 'R';
-          else if (desc.includes('switch')) battingHand = 'S';
-        }
+        // Extract batting handedness with enhanced debugging
+        const battingHand = extractBattingHandedness(player, player.person.fullName);
         
         lineups.push({
           game_id: gameId,
@@ -189,15 +286,8 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
 
         const isStarter = index === 0; // First pitcher is the starter
         
-        // Extract pitching handedness - more comprehensive approach
-        let pitchingHand = 'U';
-        if (playerInfo.person?.pitchHand?.code) {
-          pitchingHand = playerInfo.person.pitchHand.code;
-        } else if (playerInfo.person?.pitchHand?.description) {
-          const desc = playerInfo.person.pitchHand.description.toLowerCase();
-          if (desc.includes('left')) pitchingHand = 'L';
-          else if (desc.includes('right')) pitchingHand = 'R';
-        }
+        // Extract pitching handedness with enhanced debugging
+        const pitchingHand = extractPitchingHandedness(playerInfo, playerInfo.person.fullName);
         
         lineups.push({
           game_id: gameId,
