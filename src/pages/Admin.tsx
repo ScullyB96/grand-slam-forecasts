@@ -169,6 +169,51 @@ const Admin = () => {
               
               <div className="space-y-2">
                 <Button
+                  onClick={async () => {
+                    try {
+                      setIsLoading(true);
+                      const { data, error } = await supabase.functions.invoke('comprehensive-player-stats-backfill', {
+                        body: { 
+                          season: 2025,
+                          statsYear: 2024,
+                          mode: 'comprehensive'
+                        }
+                      });
+                      
+                      if (error) throw error;
+                      
+                      toast({
+                        title: "Real Data Plan Executed",
+                        description: `Successfully ingested 2025 rosters with 2024 stats. Processed ${data?.totalPlayersProcessed || 0} players.`,
+                      });
+                    } catch (error) {
+                      toast({
+                        title: "Real Data Plan Failed",
+                        description: error instanceof Error ? error.message : "Unknown error",
+                        variant: "destructive"
+                      });
+                    } finally {
+                      setIsLoading(false);
+                    }
+                  }}
+                  disabled={isLoading}
+                  className="w-full"
+                  variant="default"
+                >
+                  {isLoading ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Executing Real Data Plan...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Implement Real Data Plan
+                    </>
+                  )}
+                </Button>
+
+                <Button
                   onClick={() => {
                     ingestStatcast.mutate({ season: 2025 });
                     toast({
@@ -178,7 +223,7 @@ const Admin = () => {
                   }}
                   disabled={ingestStatcast.isPending}
                   className="w-full"
-                  variant="default"
+                  variant="secondary"
                 >
                   {ingestStatcast.isPending ? (
                     <>
