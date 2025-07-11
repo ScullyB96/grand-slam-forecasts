@@ -73,3 +73,22 @@ serve(async (req) => {
         console.error(`Failed to process game ${game.game_id}: ${error.message}`);
       }
     }
+
+    return new Response(JSON.stringify({ 
+      success: true, 
+      message: `Lineup ingestion completed for ${targetDate}` 
+    }), { 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+
+  } catch (error) {
+    console.error('Lineup ingestion error:', error);
+    return new Response(JSON.stringify({ 
+      success: false, 
+      error: error.message 
+    }), { 
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+});
