@@ -60,78 +60,115 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
 
     console.log(`📋 Processing ${teamType} team: MLB ID ${mlbTeamId} -> DB ID ${dbTeamId}`);
 
-    // Process batting lineup from the lineup array (not batters array)
-    if (teamData.lineup && Array.isArray(teamData.lineup)) {
-      console.log(`  Processing ${teamData.lineup.length} lineup entries for ${teamType} team`);
-      
-      // Log the first lineup entry structure for debugging
-      if (teamData.lineup.length > 0) {
-        console.log(`📊 Sample lineup entry structure:`, JSON.stringify(teamData.lineup[0], null, 2));
-      }
-      
-      teamData.lineup.forEach((player: any, index: number) => {
-        if (!player.person) {
-          console.log(`    No person data found for lineup entry ${index}`);
-          return;
-        }
+    // Try multiple sources for batting lineup data
+    let battingLineupSource = null;
+    let battingPlayers = [];
 
-        const battingOrder = player.battingOrder || (index + 1);
-        
-        // Only include players in the batting lineup (battingOrder 1-9)
-        if (battingOrder <= 9) {
-          // Extract position from the correct field
-          const position = player.position?.code || player.position?.abbreviation || 'UNK';
+    // Option 1: Check batters array
+    if (teamData.batters && Array.isArray(teamData.batters) && teamData.batters.length > 0) {
+      console.log(`  Found batters array with ${teamData.batters.length} players`);
+      battingLineupSource = 'batters';
+      
+      // Get detailed player info from players object
+      if (teamData.players) {
+        teamData.batters.forEach((playerId: number, index: number) => {
+          const playerKey = `ID${playerId}`;
+          const playerInfo = teamData.players[playerKey];
           
-          // Extract batting handedness
-          const battingHand = player.person?.batSide?.code || 'U';
-          
-          lineups.push({
-            game_id: gameId,
-            team_id: dbTeamId,
-            lineup_type: 'batting',
-            batting_order: battingOrder,
-            player_id: player.person.id,
-            player_name: player.person.fullName || `Player ${player.person.id}`,
-            position: position,
-            handedness: battingHand,
-            is_starter: true
-          });
-          
-          console.log(`    Added batter: ${player.person.fullName} (#${battingOrder}) - ${position} - ${battingHand}`);
-        }
-      });
-    } else {
-      console.log(`  No lineup array found for ${teamType} team`);
+          if (playerInfo?.person) {
+            battingPlayers.push({
+              person: playerInfo.person,
+              position: playerInfo.position,
+              battingOrder: index + 1,
+              stats: playerInfo.stats
+            });
+          } else {
+            console.log(`    No detailed info for batter ${playerId}`);
+          }
+        });
+      }
     }
+
+    // Option 2: Check lineup array (fallback)
+    if (battingPlayers.length === 0 && teamData.lineup && Array.isArray(teamData.lineup)) {
+      console.log(`  Found lineup array with ${teamData.lineup.length} players`);
+      battingLineupSource = 'lineup';
+      battingPlayers = teamData.lineup;
+    }
+
+    // Option 3: Check battingOrder array (fallback)
+    if (battingPlayers.length === 0 && teamData.battingOrder && Array.isArray(teamData.battingOrder)) {
+      console.log(`  Found battingOrder array with ${teamData.battingOrder.length} players`);
+      battingLineupSource = 'battingOrder';
+      battingPlayers = teamData.battingOrder;
+    }
+
+    console.log(`  Using ${battingLineupSource} source for batting lineup (${battingPlayers.length} players)`);
+
+    // Process batting lineup
+    battingPlayers.forEach((player: any, index: number) => {
+      if (!player.person) {
+        console.log(`    No person data found for batting lineup entry ${index}`);
+        return;
+      }
+
+      const battingOrder = player.battingOrder || (index + 1);
+      
+      // Only include players in the batting lineup (battingOrder 1-9)
+      if (battingOrder <= 9) {
+        // Extract position from the correct field
+        const position = player.position?.code || player.position?.abbreviation || player.position?.name || 'UNK';
+        
+        // Extract batting handedness
+        const battingHand = player.person?.batSide?.code || player.person?.batSide?.description?.[0] || 'U';
+        
+        lineups.push({
+          game_id: gameId,
+          team_id: dbTeamId,
+          lineup_type: 'batting',
+          batting_order: battingOrder,
+          player_id: player.person.id,
+          player_name: player.person.fullName || `Player ${player.person.id}`,
+          position: position,
+          handedness: battingHand,
+          is_starter: true
+        });
+        
+        console.log(`    Added batter: ${player.person.fullName} (#${battingOrder}) - ${position} - ${battingHand}`);
+      }
+    });
 
     // Process pitching lineup from pitchers array
     if (teamData.pitchers && Array.isArray(teamData.pitchers)) {
       console.log(`  Processing ${teamData.pitchers.length} pitchers for ${teamType} team`);
       
-      teamData.pitchers.forEach((pitcher: any, index: number) => {
-        if (!pitcher.person) {
-          console.log(`    No person data found for pitcher ${index}`);
+      teamData.pitchers.forEach((playerId: number, index: number) => {
+        const playerKey = `ID${playerId}`;
+        const playerInfo = teamData.players?.[playerKey];
+        
+        if (!playerInfo?.person) {
+          console.log(`    No person data found for pitcher ${playerId}`);
           return;
         }
 
         const isStarter = index === 0; // First pitcher is the starter
         
         // Extract pitching handedness
-        const pitchingHand = pitcher.person?.pitchHand?.code || 'U';
+        const pitchingHand = playerInfo.person?.pitchHand?.code || playerInfo.person?.pitchHand?.description?.[0] || 'U';
         
         lineups.push({
           game_id: gameId,
           team_id: dbTeamId,
           lineup_type: 'pitching',
           batting_order: null,
-          player_id: pitcher.person.id,
-          player_name: pitcher.person.fullName || `Player ${pitcher.person.id}`,
+          player_id: playerInfo.person.id,
+          player_name: playerInfo.person.fullName || `Player ${playerInfo.person.id}`,
           position: isStarter ? 'SP' : 'RP',
           handedness: pitchingHand,
           is_starter: isStarter
         });
         
-        console.log(`    Added pitcher: ${pitcher.person.fullName} (${isStarter ? 'SP' : 'RP'}) - ${pitchingHand}HP`);
+        console.log(`    Added pitcher: ${playerInfo.person.fullName} (${isStarter ? 'SP' : 'RP'}) - ${pitchingHand}HP`);
       });
     } else {
       console.log(`  No pitchers array found for ${teamType} team`);

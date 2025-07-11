@@ -163,18 +163,31 @@ serve(async (req) => {
         // DEBUG: Log the raw structure to understand the JSON
         console.log(`🔍 DEBUG - Raw boxscore structure for game ${gameId}:`);
         console.log(`  - Has teams: ${!!boxscoreData.teams}`);
-        console.log(`  - Teams keys: ${boxscoreData.teams ? Object.keys(boxscoreData.teams) : 'none'}`);
         
-        if (boxscoreData.teams?.home) {
-          console.log(`  - Home team: ${boxscoreData.teams.home.team?.name}`);
-          console.log(`  - Home lineup array length: ${boxscoreData.teams.home.lineup?.length || 0}`);
-          console.log(`  - Home pitchers array length: ${boxscoreData.teams.home.pitchers?.length || 0}`);
-        }
-        
-        if (boxscoreData.teams?.away) {
-          console.log(`  - Away team: ${boxscoreData.teams.away.team?.name}`);
-          console.log(`  - Away lineup array length: ${boxscoreData.teams.away.lineup?.length || 0}`);
-          console.log(`  - Away pitchers array length: ${boxscoreData.teams.away.pitchers?.length || 0}`);
+        if (boxscoreData.teams) {
+          console.log(`  - Teams keys: ${Object.keys(boxscoreData.teams)}`);
+          
+          if (boxscoreData.teams.home) {
+            const homeTeam = boxscoreData.teams.home;
+            console.log(`  - Home team: ${homeTeam.team?.name} (ID: ${homeTeam.team?.id})`);
+            console.log(`  - Home team available keys: ${Object.keys(homeTeam)}`);
+            console.log(`  - Home batters: ${homeTeam.batters?.length || 0}`);
+            console.log(`  - Home pitchers: ${homeTeam.pitchers?.length || 0}`);
+            console.log(`  - Home lineup: ${homeTeam.lineup?.length || 0}`);
+            console.log(`  - Home battingOrder: ${homeTeam.battingOrder?.length || 0}`);
+            console.log(`  - Home players keys: ${homeTeam.players ? Object.keys(homeTeam.players).length : 0}`);
+          }
+          
+          if (boxscoreData.teams.away) {
+            const awayTeam = boxscoreData.teams.away;
+            console.log(`  - Away team: ${awayTeam.team?.name} (ID: ${awayTeam.team?.id})`);
+            console.log(`  - Away team available keys: ${Object.keys(awayTeam)}`);
+            console.log(`  - Away batters: ${awayTeam.batters?.length || 0}`);
+            console.log(`  - Away pitchers: ${awayTeam.pitchers?.length || 0}`);
+            console.log(`  - Away lineup: ${awayTeam.lineup?.length || 0}`);
+            console.log(`  - Away battingOrder: ${awayTeam.battingOrder?.length || 0}`);
+            console.log(`  - Away players keys: ${awayTeam.players ? Object.keys(awayTeam.players).length : 0}`);
+          }
         }
 
         // Extract lineups using the corrected MLB API helper
