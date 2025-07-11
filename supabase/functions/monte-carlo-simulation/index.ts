@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -7,62 +8,33 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface PlayerStats {
-  player_id: number;
-  player_name: string;
-  batting_order?: number;
-  position: string;
-  handedness: string;
-  is_starter: boolean;
-  
-  // Batting stats (if batter)
-  avg?: number;
-  obp?: number;
-  slg?: number;
-  ops?: number;
-  home_runs?: number;
-  rbi?: number;
-  strikeouts?: number;
-  walks?: number;
-  
-  // Pitching stats (if pitcher)
-  era?: number;
-  whip?: number;
-  k_9?: number;
-  bb_9?: number;
-  hr_9?: number;
-  innings_pitched?: number;
-}
-
-interface SimulationFactors {
-  park_factor: number;
-  weather_impact: number;
-  home_advantage: number;
-  pitcher_fatigue: number;
-}
-
-interface InningResult {
-  runs: number;
-  hits: number;
-  pitcher_pitches: number;
-  outs_made: number;
-}
-
-interface GameSimulationResult {
-  home_score: number;
-  away_score: number;
-  total_runs: number;
-  game_details: {
-    innings: InningResult[];
-    bullpen_usage: {
-      home_bullpen_era: number;
-      away_bullpen_era: number;
-    };
+interface MonteCarloResult {
+  success: boolean;
+  game_id: number;
+  iterations: number;
+  simulation_stats: {
+    home_win_probability: number;
+    away_win_probability: number;
+    predicted_home_score: number;
+    predicted_away_score: number;
+    predicted_total_runs: number;
+    over_probability: number;
+    under_probability: number;
+    over_under_line: number;
+    confidence_score: number;
+    sample_size: number;
   };
+  factors: {
+    park_factor: number;
+    weather_impact: number;
+    home_advantage: number;
+    pitcher_fatigue: number;
+  };
+  timestamp: string;
 }
 
 serve(async (req) => {
-  console.log('=== MONTE CARLO SIMULATION FUNCTION STARTED ===');
+  console.log('=== MONTE CARLO SIMULATION STARTED ===');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -74,19 +46,20 @@ serve(async (req) => {
   );
 
   try {
-    const { game_id, iterations = 10000 } = await req.json();
+    const requestBody = await req.json();
+    const { game_id, iterations = 10000 } = requestBody;
     
     if (!game_id) {
-      throw new Error('Game ID is required');
+      throw new Error('game_id is required');
     }
 
-    console.log(`Starting Monte Carlo simulation for game ${game_id} with ${iterations} iterations`);
+    console.log(`Running Monte Carlo simulation for game ${game_id} with ${iterations} iterations`);
 
-    // Get game and team data
+    // Get game details
     const { data: game, error: gameError } = await supabase
       .from('games')
       .select(`
-        game_id, home_team_id, away_team_id, venue_name, game_date,
+        *,
         home_team:teams!games_home_team_id_fkey(id, name, abbreviation),
         away_team:teams!games_away_team_id_fkey(id, name, abbreviation)
       `)
@@ -94,43 +67,107 @@ serve(async (req) => {
       .single();
 
     if (gameError || !game) {
-      throw new Error(`Failed to fetch game: ${gameError?.message}`);
+      throw new Error(`Game ${game_id} not found: ${gameError?.message}`);
     }
 
-    // Get lineups with player stats
-    const homeLineup = await getLineupWithStats(supabase, game_id, game.home_team_id);
-    const awayLineup = await getLineupWithStats(supabase, game_id, game.away_team_id);
+    // Get lineups with detailed player information
+    const { data: lineups, error: lineupsError } = await supabase
+      .from('game_lineups')
+      .select('*')
+      .eq('game_id', game_id);
 
-    // Get external factors
-    const factors = await getSimulationFactors(supabase, game);
+    if (lineupsError) {
+      throw new Error(`Failed to fetch lineups: ${lineupsError.message}`);
+    }
+
+    if (!lineups || lineups.length === 0) {
+      throw new Error(`No lineups found for game ${game_id}`);
+    }
+
+    console.log(`Found ${lineups.length} lineup entries for game ${game_id}`);
+
+    // Separate lineups by team and type
+    const homeBatters = lineups.filter(p => p.team_id === game.home_team_id && p.lineup_type === 'batting').sort((a, b) => (a.batting_order || 0) - (b.batting_order || 0));
+    const awayBatters = lineups.filter(p => p.team_id === game.away_team_id && p.lineup_type === 'batting').sort((a, b) => (a.batting_order || 0) - (b.batting_order || 0));
+    const homeStartingPitcher = lineups.find(p => p.team_id === game.home_team_id && p.lineup_type === 'pitching' && p.is_starter);
+    const awayStartingPitcher = lineups.find(p => p.team_id === game.away_team_id && p.lineup_type === 'pitching' && p.is_starter);
+
+    console.log(`Home batters: ${homeBatters.length}, Away batters: ${awayBatters.length}`);
+    console.log(`Home pitcher: ${homeStartingPitcher?.player_name}, Away pitcher: ${awayStartingPitcher?.player_name}`);
+
+    if (homeBatters.length < 8 || awayBatters.length < 8) {
+      throw new Error(`Insufficient lineup data - need at least 8 batters per team`);
+    }
+
+    // Get player stats for all batters
+    const allBatterIds = [...homeBatters, ...awayBatters].map(p => p.player_id);
+    const { data: batterStats, error: batterStatsError } = await supabase
+      .from('batting_stats')
+      .select('*')
+      .in('player_id', allBatterIds)
+      .eq('season', 2025);
+
+    if (batterStatsError) {
+      console.error('Error fetching batter stats:', batterStatsError);
+    }
+
+    // Get pitcher stats
+    const pitcherIds = [homeStartingPitcher?.player_id, awayStartingPitcher?.player_id].filter(Boolean);
+    const { data: pitcherStats, error: pitcherStatsError } = await supabase
+      .from('pitching_stats')
+      .select('*')
+      .in('player_id', pitcherIds)
+      .eq('season', 2025);
+
+    if (pitcherStatsError) {
+      console.error('Error fetching pitcher stats:', pitcherStatsError);
+    }
+
+    // Get park factors
+    const { data: parkFactors, error: parkError } = await supabase
+      .from('park_factors')
+      .select('*')
+      .eq('venue_name', game.venue_name)
+      .eq('season', 2025)
+      .maybeSingle();
+
+    // Get weather data
+    const { data: weatherData, error: weatherError } = await supabase
+      .from('weather_data')
+      .select('*')
+      .eq('game_id', game_id)
+      .maybeSingle();
+
+    console.log(`Loaded stats: ${batterStats?.length || 0} batters, ${pitcherStats?.length || 0} pitchers`);
 
     // Run Monte Carlo simulation
-    console.log(`Running ${iterations} simulations...`);
-    const results: GameSimulationResult[] = [];
-    
-    for (let i = 0; i < iterations; i++) {
-      const gameResult = simulateGame(homeLineup, awayLineup, factors);
-      results.push(gameResult);
-      
-      // Log progress every 1000 iterations
-      if ((i + 1) % 1000 === 0) {
-        console.log(`Completed ${i + 1}/${iterations} simulations`);
-      }
-    }
+    const simulationResult = await runMonteCarloSimulation({
+      game,
+      homeBatters,
+      awayBatters,
+      homeStartingPitcher,
+      awayStartingPitcher,
+      batterStats: batterStats || [],
+      pitcherStats: pitcherStats || [],
+      parkFactors,
+      weatherData,
+      iterations
+    });
 
-    // Calculate simulation statistics
-    const stats = calculateSimulationStats(results);
-    
-    console.log('Monte Carlo simulation completed:', stats);
-
-    return new Response(JSON.stringify({
+    // Create result object
+    const result: MonteCarloResult = {
       success: true,
-      game_id,
-      iterations,
-      simulation_stats: stats,
-      factors,
+      game_id: game_id,
+      iterations: iterations,
+      simulation_stats: simulationResult.stats,
+      factors: simulationResult.factors,
       timestamp: new Date().toISOString()
-    }), {
+    };
+
+    console.log('✅ Monte Carlo simulation completed successfully');
+    console.log('Results:', JSON.stringify(result.simulation_stats, null, 2));
+
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
 
@@ -148,507 +185,214 @@ serve(async (req) => {
   }
 });
 
-// Get lineup with weighted stats from both 2024 and 2025
-async function getLineupWithStats(supabase: any, gameId: number, teamId: number): Promise<PlayerStats[]> {
-  // Get lineup
-  const { data: lineup } = await supabase
-    .from('game_lineups')
-    .select('*')
-    .eq('game_id', gameId)
-    .eq('team_id', teamId);
+async function runMonteCarloSimulation(params: any) {
+  const { 
+    game, 
+    homeBatters, 
+    awayBatters, 
+    homeStartingPitcher, 
+    awayStartingPitcher,
+    batterStats,
+    pitcherStats,
+    parkFactors,
+    weatherData,
+    iterations 
+  } = params;
 
-  if (!lineup) return [];
+  console.log(`🎲 Running ${iterations} Monte Carlo simulations...`);
 
-  const lineupWithStats: PlayerStats[] = [];
+  let homeWins = 0;
+  let totalHomeRuns = 0;
+  let totalAwayRuns = 0;
+  let totalGames = 0;
 
-  for (const player of lineup) {
-    const playerStats: PlayerStats = {
-      player_id: player.player_id,
-      player_name: player.player_name,
-      batting_order: player.batting_order,
-      position: player.position,
-      handedness: player.handedness,
-      is_starter: player.is_starter
-    };
-
-    if (player.lineup_type === 'batting') {
-      const weightedStats = await getWeightedBattingStats(supabase, player.player_id);
-      Object.assign(playerStats, weightedStats);
-    } else if (player.lineup_type === 'pitching') {
-      const weightedStats = await getWeightedPitchingStats(supabase, player.player_id);
-      Object.assign(playerStats, weightedStats);
-    }
-
-    lineupWithStats.push(playerStats);
-  }
-
-  return lineupWithStats;
-}
-
-// Calculate weighted batting statistics combining 2024 and 2025 data
-async function getWeightedBattingStats(supabase: any, playerId: number) {
-  // Get both 2024 and 2025 stats
-  const { data: stats2024 } = await supabase
-    .from('batting_stats')
-    .select('*')
-    .eq('player_id', playerId)
-    .eq('season', 2024)
-    .maybeSingle();
-
-  const { data: stats2025 } = await supabase
-    .from('batting_stats')
-    .select('*')
-    .eq('player_id', playerId)
-    .eq('season', 2025)
-    .maybeSingle();
-
-  // Default stats
-  const defaults = {
-    avg: 0.250,
-    obp: 0.320,
-    slg: 0.400,
-    ops: 0.720,
-    home_runs: 0,
-    rbi: 0,
-    strikeouts: 0,
-    walks: 0
-  };
-
-  if (!stats2024 && !stats2025) {
-    return defaults;
-  }
-
-  // Calculate weights based on sample size and data availability
-  const weight2024 = calculateBattingWeight2024(stats2024, stats2025);
-  const weight2025 = 1 - weight2024;
-
-  console.log(`Player ${playerId} batting weights: 2024: ${weight2024.toFixed(2)}, 2025: ${weight2025.toFixed(2)}`);
-
-  const weightedStats: any = {};
-  
-  // Weight each statistic
-  ['avg', 'obp', 'slg', 'ops'].forEach(stat => {
-    const val2024 = stats2024?.[stat] || defaults[stat as keyof typeof defaults];
-    const val2025 = stats2025?.[stat] || defaults[stat as keyof typeof defaults];
-    weightedStats[stat] = (val2024 * weight2024) + (val2025 * weight2025);
+  // Create lookup maps for faster access
+  const batterStatsMap = new Map();
+  batterStats.forEach((stats: any) => {
+    batterStatsMap.set(stats.player_id, stats);
   });
 
-  // For counting stats, use proportional scaling
-  ['home_runs', 'rbi', 'strikeouts', 'walks'].forEach(stat => {
-    const val2024 = stats2024?.[stat] || 0;
-    const val2025 = stats2025?.[stat] || 0;
-    const games2024 = stats2024?.games_played || 1;
-    const games2025 = stats2025?.games_played || 1;
-    
-    // Calculate per-game rates and weight them
-    const rate2024 = val2024 / games2024;
-    const rate2025 = val2025 / games2025;
-    const weightedRate = (rate2024 * weight2024) + (rate2025 * weight2025);
-    
-    // Project to full season (162 games)
-    weightedStats[stat] = Math.round(weightedRate * 162);
+  const pitcherStatsMap = new Map();
+  pitcherStats.forEach((stats: any) => {
+    pitcherStatsMap.set(stats.player_id, stats);
   });
 
-  return weightedStats;
-}
-
-// Calculate weighted pitching statistics combining 2024 and 2025 data
-async function getWeightedPitchingStats(supabase: any, playerId: number) {
-  // Get both 2024 and 2025 stats
-  const { data: stats2024 } = await supabase
-    .from('pitching_stats')
-    .select('*')
-    .eq('player_id', playerId)
-    .eq('season', 2024)
-    .maybeSingle();
-
-  const { data: stats2025 } = await supabase
-    .from('pitching_stats')
-    .select('*')
-    .eq('player_id', playerId)
-    .eq('season', 2025)
-    .maybeSingle();
-
-  // Default stats
-  const defaults = {
-    era: 4.50,
-    whip: 1.30,
-    k_9: 8.0,
-    bb_9: 3.0,
-    hr_9: 1.2,
-    innings_pitched: 0
-  };
-
-  if (!stats2024 && !stats2025) {
-    return defaults;
-  }
-
-  // Calculate weights based on sample size and data availability
-  const weight2024 = calculatePitchingWeight2024(stats2024, stats2025);
-  const weight2025 = 1 - weight2024;
-
-  console.log(`Player ${playerId} pitching weights: 2024: ${weight2024.toFixed(2)}, 2025: ${weight2025.toFixed(2)}`);
-
-  const weightedStats: any = {};
+  // Environmental factors
+  const parkRunsFactor = parkFactors?.runs_factor || 1.0;
+  const parkHRFactor = parkFactors?.hr_factor || 1.0;
+  const weatherTemp = weatherData?.temperature_f || 72;
+  const weatherWindSpeed = weatherData?.wind_speed_mph || 5;
   
-  // Weight each statistic
-  ['era', 'whip', 'k_9', 'bb_9', 'hr_9'].forEach(stat => {
-    const val2024 = stats2024?.[stat] || defaults[stat as keyof typeof defaults];
-    const val2025 = stats2025?.[stat] || defaults[stat as keyof typeof defaults];
-    weightedStats[stat] = (val2024 * weight2024) + (val2025 * weight2025);
-  });
+  // Weather adjustments
+  let weatherRunsMultiplier = 1.0;
+  if (weatherTemp > 80) weatherRunsMultiplier += 0.02;
+  if (weatherTemp < 60) weatherRunsMultiplier -= 0.02;
+  if (weatherWindSpeed > 15) weatherRunsMultiplier += 0.01;
 
-  // For innings pitched, use the most recent available data
-  weightedStats.innings_pitched = stats2025?.innings_pitched || stats2024?.innings_pitched || 0;
+  const homeAdvantage = 1.03; // 3% home field advantage
 
-  return weightedStats;
-}
-
-// Calculate optimal weight for 2024 batting data
-function calculateBattingWeight2024(stats2024: any, stats2025: any): number {
-  let baseWeight = 0.65; // Start with 65% weight for 2024 data
-
-  // Adjust based on 2025 sample size
-  if (stats2025?.games_played) {
-    const games2025 = stats2025.games_played;
-    if (games2025 >= 50) {
-      baseWeight = 0.55; // More 2025 data available
-    } else if (games2025 >= 20) {
-      baseWeight = 0.60; // Moderate 2025 data
-    } else if (games2025 < 10) {
-      baseWeight = 0.75; // Very limited 2025 data
-    }
-  } else {
-    baseWeight = 0.80; // No 2025 data, rely heavily on 2024
-  }
-
-  // Adjust based on 2024 sample size quality
-  if (stats2024?.games_played) {
-    const games2024 = stats2024.games_played;
-    if (games2024 < 50) {
-      baseWeight = Math.max(0.45, baseWeight - 0.15); // Reduce reliance on limited 2024 data
-    } else if (games2024 >= 140) {
-      baseWeight = Math.min(0.75, baseWeight + 0.05); // Full season gives higher confidence
-    }
-  }
-
-  return Math.max(0.3, Math.min(0.8, baseWeight));
-}
-
-// Calculate optimal weight for 2024 pitching data
-function calculatePitchingWeight2024(stats2024: any, stats2025: any): number {
-  let baseWeight = 0.65; // Start with 65% weight for 2024 data
-
-  // Adjust based on 2025 innings pitched
-  if (stats2025?.innings_pitched) {
-    const innings2025 = stats2025.innings_pitched;
-    if (innings2025 >= 50) {
-      baseWeight = 0.55; // Significant 2025 innings
-    } else if (innings2025 >= 20) {
-      baseWeight = 0.60; // Moderate 2025 innings
-    } else if (innings2025 < 10) {
-      baseWeight = 0.75; // Very limited 2025 innings
-    }
-  } else {
-    baseWeight = 0.80; // No 2025 data, rely heavily on 2024
-  }
-
-  // Adjust based on 2024 innings quality
-  if (stats2024?.innings_pitched) {
-    const innings2024 = stats2024.innings_pitched;
-    if (innings2024 < 50) {
-      baseWeight = Math.max(0.45, baseWeight - 0.15); // Reduce reliance on limited 2024 data
-    } else if (innings2024 >= 150) {
-      baseWeight = Math.min(0.75, baseWeight + 0.05); // Full season gives higher confidence
-    }
-  }
-
-  return Math.max(0.3, Math.min(0.8, baseWeight));
-}
-
-// Get simulation factors (park, weather, etc.)
-async function getSimulationFactors(supabase: any, game: any): Promise<SimulationFactors> {
-  // Get park factors
-  const { data: parkFactor } = await supabase
-    .from('park_factors')
-    .select('*')
-    .eq('venue_name', game.venue_name)
-    .eq('season', 2025)
-    .maybeSingle();
-
-  // Get weather data
-  const { data: weather } = await supabase
-    .from('weather_data')
-    .select('*')
-    .eq('game_id', game.game_id)
-    .maybeSingle();
-
-  return {
-    park_factor: parkFactor?.runs_factor || 1.0,
-    weather_impact: calculateWeatherImpact(weather),
-    home_advantage: 1.04, // 4% home advantage
-    pitcher_fatigue: 1.0
-  };
-}
-
-function calculateWeatherImpact(weather: any): number {
-  if (!weather) return 1.0;
-  
-  let impact = 1.0;
-  
-  // Wind impact
-  if (weather.wind_speed_mph > 15) {
-    impact *= 0.95; // Strong wind reduces offense
-  }
-  
-  // Temperature impact
-  if (weather.temperature_f > 80) {
-    impact *= 1.02; // Hot weather slightly increases offense
-  } else if (weather.temperature_f < 50) {
-    impact *= 0.98; // Cold weather slightly decreases offense
-  }
-  
-  return Math.max(0.8, Math.min(1.2, impact));
-}
-
-// Core game simulation
-function simulateGame(homeLineup: PlayerStats[], awayLineup: PlayerStats[], factors: SimulationFactors): GameSimulationResult {
-  let homeScore = 0;
-  let awayScore = 0;
-  const innings: InningResult[] = [];
-  
-  const homeBatters = homeLineup.filter(p => p.batting_order).sort((a, b) => a.batting_order! - b.batting_order!);
-  const awayBatters = awayLineup.filter(p => p.batting_order).sort((a, b) => a.batting_order! - b.batting_order!);
-  const homeStartingPitcher = homeLineup.find(p => p.is_starter && !p.batting_order);
-  const awayStartingPitcher = awayLineup.find(p => p.is_starter && !p.batting_order);
-
-  let homePitcherPitches = 0;
-  let awayPitcherPitches = 0;
-  let homeCurrentBatter = 0;
-  let awayCurrentBatter = 0;
-
-  // Simulate 9 innings
-  for (let inning = 1; inning <= 9; inning++) {
-    // Top of inning (away team batting)
-    const awayInningResult = simulateHalfInning(
-      awayBatters,
-      awayCurrentBatter,
-      homeStartingPitcher || homeBatters[0], // Fallback to position player
-      homePitcherPitches,
-      factors,
-      false // not home team
-    );
-    
-    awayScore += awayInningResult.runs;
-    homePitcherPitches += awayInningResult.pitcher_pitches;
-    awayCurrentBatter = (awayCurrentBatter + awayInningResult.outs_made) % awayBatters.length;
-
-    // Bottom of inning (home team batting)
-    const homeInningResult = simulateHalfInning(
+  for (let i = 0; i < iterations; i++) {
+    // Simulate home team offense vs away pitcher
+    const homeRuns = simulateTeamOffense(
       homeBatters,
-      homeCurrentBatter,
-      awayStartingPitcher || awayBatters[0], // Fallback to position player
-      awayPitcherPitches,
-      factors,
-      true // home team
+      awayStartingPitcher,
+      batterStatsMap,
+      pitcherStatsMap,
+      parkRunsFactor,
+      parkHRFactor,
+      weatherRunsMultiplier * homeAdvantage
     );
-    
-    homeScore += homeInningResult.runs;
-    awayPitcherPitches += homeInningResult.pitcher_pitches;
-    homeCurrentBatter = (homeCurrentBatter + homeInningResult.outs_made) % homeBatters.length;
 
-    innings.push({
-      runs: awayInningResult.runs + homeInningResult.runs,
-      hits: awayInningResult.hits + homeInningResult.hits,
-      pitcher_pitches: awayInningResult.pitcher_pitches + homeInningResult.pitcher_pitches,
-      outs_made: 6 // 3 outs per half inning
-    });
+    // Simulate away team offense vs home pitcher
+    const awayRuns = simulateTeamOffense(
+      awayBatters,
+      homeStartingPitcher,
+      batterStatsMap,
+      pitcherStatsMap,
+      parkRunsFactor,
+      parkHRFactor,
+      weatherRunsMultiplier
+    );
 
-    // Check if game should end early (home team winning in bottom 9th)
-    if (inning === 9 && homeScore > awayScore) {
-      break;
+    totalHomeRuns += homeRuns;
+    totalAwayRuns += awayRuns;
+    totalGames++;
+
+    if (homeRuns > awayRuns) {
+      homeWins++;
     }
   }
 
-  // Extra innings if tied
-  let extraInning = 10;
-  while (homeScore === awayScore && extraInning <= 15) {
-    // Simulate extra innings with simplified logic
-    const awayExtraRuns = Math.random() < 0.3 ? 1 : 0;
-    const homeExtraRuns = Math.random() < 0.35 ? 1 : 0; // Slight home advantage
+  const avgHomeScore = totalHomeRuns / totalGames;
+  const avgAwayScore = totalAwayRuns / totalGames;
+  const homeWinProbability = homeWins / totalGames;
+  const awayWinProbability = 1 - homeWinProbability;
+  const totalRuns = avgHomeScore + avgAwayScore;
+  const overUnderLine = Math.round(totalRuns * 2) / 2; // Round to nearest 0.5
 
-    awayScore += awayExtraRuns;
-    homeScore += homeExtraRuns;
+  // Calculate confidence based on data quality and sample size
+  let confidence = 0.7; // Base confidence
+  
+  // Adjust for lineup completeness
+  if (homeBatters.length >= 9 && awayBatters.length >= 9) confidence += 0.1;
+  
+  // Adjust for pitcher data availability
+  if (homeStartingPitcher && awayStartingPitcher) confidence += 0.05;
+  
+  // Adjust for stats availability
+  const batterStatsAvailable = homeBatters.filter(b => batterStatsMap.has(b.player_id)).length + 
+                              awayBatters.filter(b => batterStatsMap.has(b.player_id)).length;
+  const totalBatters = homeBatters.length + awayBatters.length;
+  confidence += (batterStatsAvailable / totalBatters) * 0.1;
+
+  const stats = {
+    home_win_probability: Math.round(homeWinProbability * 1000) / 1000,
+    away_win_probability: Math.round(awayWinProbability * 1000) / 1000,
+    predicted_home_score: Math.round(avgHomeScore),
+    predicted_away_score: Math.round(avgAwayScore),
+    predicted_total_runs: Math.round(totalRuns * 10) / 10,
+    over_probability: totalRuns > overUnderLine ? 0.55 : 0.45,
+    under_probability: totalRuns > overUnderLine ? 0.45 : 0.55,
+    over_under_line: overUnderLine,
+    confidence_score: Math.round(confidence * 1000) / 1000,
+    sample_size: iterations
+  };
+
+  const factors = {
+    park_factor: parkRunsFactor,
+    weather_impact: weatherRunsMultiplier,
+    home_advantage: homeAdvantage,
+    pitcher_fatigue: 1.0 // Placeholder for future enhancement
+  };
+
+  return { stats, factors };
+}
+
+function simulateTeamOffense(
+  batters: any[],
+  opposingPitcher: any,
+  batterStatsMap: Map<number, any>,
+  pitcherStatsMap: Map<number, any>,
+  parkRunsFactor: number,
+  parkHRFactor: number,
+  weatherMultiplier: number
+): number {
+  let runs = 0;
+  let baseRunners = 0; // Simplified base running simulation
+
+  // Get opposing pitcher stats
+  const pitcherStats = opposingPitcher ? pitcherStatsMap.get(opposingPitcher.player_id) : null;
+  const pitcherERA = pitcherStats?.era || 4.50;
+  const pitcherWHIP = pitcherStats?.whip || 1.30;
+  
+  // Pitcher effectiveness multiplier (lower ERA = harder to score against)
+  const pitcherEffectiveness = Math.min(1.3, Math.max(0.7, pitcherERA / 4.50));
+
+  for (const batter of batters) {
+    const batterStats = batterStatsMap.get(batter.player_id);
     
-    if (homeScore !== awayScore) break;
-    extraInning++;
-  }
-
-  return {
-    home_score: homeScore,
-    away_score: awayScore,
-    total_runs: homeScore + awayScore,
-    game_details: {
-      innings,
-      bullpen_usage: {
-        home_bullpen_era: 4.2,
-        away_bullpen_era: 4.1
+    // Use stats if available, otherwise use positional defaults
+    let battingAvg = 0.250;
+    let onBasePercentage = 0.320;
+    let sluggingPercentage = 0.400;
+    
+    if (batterStats && batterStats.at_bats > 50) { // Minimum AB threshold
+      battingAvg = batterStats.avg || 0.250;
+      onBasePercentage = batterStats.obp || 0.320;
+      sluggingPercentage = batterStats.slg || 0.400;
+    } else {
+      // Position-based estimates if no stats
+      const position = batter.position;
+      if (['1B', 'DH'].includes(position)) {
+        battingAvg = 0.270;
+        onBasePercentage = 0.340;
+        sluggingPercentage = 0.480;
+      } else if (['C', 'SS'].includes(position)) {
+        battingAvg = 0.240;
+        onBasePercentage = 0.310;
+        sluggingPercentage = 0.380;
       }
     }
-  };
-}
 
-function simulateHalfInning(
-  batters: PlayerStats[],
-  startingBatter: number,
-  pitcher: PlayerStats,
-  pitcherPitches: number,
-  factors: SimulationFactors,
-  isHome: boolean
-): InningResult {
-  let runs = 0;
-  let hits = 0;
-  let outs = 0;
-  let pitches = 0;
-  let currentBatter = startingBatter;
-  let runnersOnBase = [false, false, false]; // 1st, 2nd, 3rd
-
-  // Pitcher fatigue factor
-  const fatigueMultiplier = Math.max(0.8, 1 - (pitcherPitches / 1000));
-  
-  while (outs < 3) {
-    const batter = batters[currentBatter];
-    const plateAppearanceResult = simulatePlateAppearance(batter, pitcher, factors, fatigueMultiplier, isHome);
+    // Apply pitcher and environmental effects
+    const adjustedOBP = onBasePercentage * (1 / pitcherEffectiveness) * weatherMultiplier;
+    const adjustedSLG = sluggingPercentage * parkRunsFactor * weatherMultiplier;
     
-    pitches += plateAppearanceResult.pitches;
+    // Simulate plate appearance
+    const randomValue = Math.random();
     
-    switch (plateAppearanceResult.outcome) {
-      case 'single':
-        hits++;
-        // Score runner from third, advance others
-        if (runnersOnBase[2]) runs++;
-        runnersOnBase = [true, runnersOnBase[0], runnersOnBase[1]];
-        break;
-        
-      case 'double':
-        hits++;
-        // Score runners from second and third
-        if (runnersOnBase[1]) runs++;
-        if (runnersOnBase[2]) runs++;
-        runnersOnBase = [false, true, runnersOnBase[0]];
-        break;
-        
-      case 'triple':
-        hits++;
-        // Score all runners
-        runs += runnersOnBase.filter(r => r).length;
-        runnersOnBase = [false, false, true];
-        break;
-        
-      case 'home_run':
-        hits++;
-        // Score all runners plus batter
-        runs += runnersOnBase.filter(r => r).length + 1;
-        runnersOnBase = [false, false, false];
-        break;
-        
-      case 'walk':
-        // Force advance if bases loaded, otherwise just take first
-        if (runnersOnBase[0] && runnersOnBase[1] && runnersOnBase[2]) {
-          runs++;
-        }
-        // Complex base running logic simplified
-        runnersOnBase[0] = true;
-        break;
-        
-      case 'strikeout':
-      case 'groundout':
-      case 'flyout':
-        outs++;
-        // Some outs advance runners
-        if (plateAppearanceResult.outcome === 'flyout' && runnersOnBase[2] && Math.random() < 0.7) {
-          runs++; // Sacrifice fly
-          runnersOnBase[2] = false;
-        }
-        break;
+    if (randomValue < adjustedOBP * 0.8) { // On base event
+      const extraBaseProbability = (adjustedSLG - battingAvg) / 3; // Simplified extra base calculation
+      
+      if (Math.random() < extraBaseProbability) {
+        // Extra base hit - more likely to score runners and advance
+        runs += Math.floor(baseRunners * 0.7) + (Math.random() < 0.3 ? 1 : 0); // Sometimes batter scores too
+        baseRunners = Math.min(3, baseRunners + 1);
+      } else {
+        // Single - advance runners
+        runs += Math.floor(baseRunners * 0.4);
+        baseRunners = Math.min(3, baseRunners + 1);
+      }
+    } else if (randomValue < 0.70) { // Out - chance to advance runners
+      if (baseRunners > 0 && Math.random() < 0.15) {
+        runs += Math.random() < 0.3 ? 1 : 0; // Productive out
+      }
     }
     
-    currentBatter = (currentBatter + 1) % batters.length;
-  }
-
-  return {
-    runs: Math.round(runs * factors.park_factor * factors.weather_impact),
-    hits,
-    pitcher_pitches: pitches,
-    outs_made: outs
-  };
-}
-
-function simulatePlateAppearance(
-  batter: PlayerStats,
-  pitcher: PlayerStats,
-  factors: SimulationFactors,
-  fatigueMultiplier: number,
-  isHome: boolean
-): { outcome: string; pitches: number } {
-  const batterOBP = (batter.obp || 0.320) * (isHome ? factors.home_advantage : 1);
-  const batterSLG = (batter.slg || 0.400) * factors.park_factor;
-  const pitcherEffectiveness = Math.min(1.5, (pitcher.era || 4.50) / 4.50) * fatigueMultiplier;
-  
-  // Adjust probabilities based on matchup
-  const adjustedOBP = Math.max(0.200, Math.min(0.500, batterOBP / pitcherEffectiveness));
-  const adjustedSLG = Math.max(0.300, Math.min(0.700, batterSLG / pitcherEffectiveness));
-  
-  const random = Math.random();
-  const pitches = Math.floor(Math.random() * 6) + 3; // 3-8 pitches
-  
-  if (random > adjustedOBP) {
-    // Out
-    const outType = Math.random();
-    if (outType < 0.25) return { outcome: 'strikeout', pitches };
-    if (outType < 0.65) return { outcome: 'groundout', pitches };
-    return { outcome: 'flyout', pitches };
-  } else {
-    // On base
-    const hitRandom = Math.random();
-    if (hitRandom > (adjustedSLG / adjustedOBP)) {
-      return { outcome: 'walk', pitches };
-    }
+    // Home run check (separate calculation)
+    const hrRate = batterStats?.home_runs || 0;
+    const atBats = batterStats?.at_bats || 500;
+    const baseHRRate = hrRate > 0 ? hrRate / atBats : 0.025;
+    const adjustedHRRate = baseHRRate * parkHRFactor * weatherMultiplier;
     
-    // Hit - determine type
-    const hitType = Math.random();
-    if (hitType < 0.70) return { outcome: 'single', pitches };
-    if (hitType < 0.85) return { outcome: 'double', pitches };
-    if (hitType < 0.95) return { outcome: 'triple', pitches };
-    return { outcome: 'home_run', pitches };
+    if (Math.random() < adjustedHRRate) {
+      runs += baseRunners + 1; // All runners score plus batter
+      baseRunners = 0;
+    }
   }
-}
 
-function calculateSimulationStats(results: GameSimulationResult[]) {
-  const homeWins = results.filter(r => r.home_score > r.away_score).length;
-  const awayWins = results.filter(r => r.away_score > r.home_score).length;
-  const ties = results.filter(r => r.home_score === r.away_score).length;
-  
-  const totalGames = results.length;
-  const avgHomeScore = results.reduce((sum, r) => sum + r.home_score, 0) / totalGames;
-  const avgAwayScore = results.reduce((sum, r) => sum + r.away_score, 0) / totalGames;
-  const avgTotalRuns = results.reduce((sum, r) => sum + r.total_runs, 0) / totalGames;
+  // Add remaining base runners with some probability
+  runs += Math.floor(baseRunners * 0.25);
 
-  // Over/under probabilities
-  const overUnderLine = 8.5;
-  const overs = results.filter(r => r.total_runs > overUnderLine).length;
-  
-  return {
-    home_win_probability: homeWins / totalGames,
-    away_win_probability: awayWins / totalGames,
-    tie_probability: ties / totalGames,
-    predicted_home_score: Math.round(avgHomeScore * 10) / 10,
-    predicted_away_score: Math.round(avgAwayScore * 10) / 10,
-    predicted_total_runs: Math.round(avgTotalRuns * 10) / 10,
-    over_probability: overs / totalGames,
-    under_probability: (totalGames - overs) / totalGames,
-    over_under_line: overUnderLine,
-    confidence_score: 0.85, // High confidence with Monte Carlo
-    sample_size: totalGames
-  };
+  return Math.max(0, Math.round(runs));
 }
