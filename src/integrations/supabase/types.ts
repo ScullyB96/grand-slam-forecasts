@@ -265,6 +265,36 @@ export type Database = {
           },
         ]
       }
+      cron_job_logs: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          execution_time: string | null
+          id: number
+          job_name: string
+          response_data: Json | null
+          status: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          execution_time?: string | null
+          id?: number
+          job_name: string
+          response_data?: Json | null
+          status?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          execution_time?: string | null
+          id?: number
+          job_name?: string
+          response_data?: Json | null
+          status?: string | null
+        }
+        Relationships: []
+      }
       data_audit_results: {
         Row: {
           anomalies: Json | null
