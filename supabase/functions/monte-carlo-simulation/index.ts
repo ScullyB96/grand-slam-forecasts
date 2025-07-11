@@ -102,49 +102,120 @@ serve(async (req) => {
     // Get player stats for all batters - now using Statcast data
     const allBatterIds = [...homeBatters, ...awayBatters].map(p => p.player_id);
     
-    // Fetch traditional batting stats
-    const { data: batterStats, error: batterStatsError } = await supabase
+    // Fetch traditional batting stats - try 2025 first, fallback to 2024
+    console.log('Fetching batting stats for players:', allBatterIds);
+    let { data: batterStats, error: batterStatsError } = await supabase
       .from('batting_stats')
       .select('*')
       .in('player_id', allBatterIds)
       .eq('season', 2025);
 
     if (batterStatsError) {
-      console.error('Error fetching batter stats:', batterStatsError);
+      console.error('Error fetching 2025 batter stats:', batterStatsError);
     }
 
-    // Fetch Statcast data for batters
-    const { data: batterStatcast, error: batterStatcastError } = await supabase
+    // Fallback to 2024 data if 2025 is empty
+    if (!batterStats || batterStats.length === 0) {
+      console.log('No 2025 batting stats found, trying 2024...');
+      const { data: fallbackBatterStats, error: fallbackError } = await supabase
+        .from('batting_stats')
+        .select('*')
+        .in('player_id', allBatterIds)
+        .eq('season', 2024);
+      
+      if (!fallbackError && fallbackBatterStats) {
+        batterStats = fallbackBatterStats;
+        console.log(`✅ Found ${batterStats.length} batting stat records from 2024`);
+      }
+    } else {
+      console.log(`✅ Found ${batterStats.length} batting stat records from 2025`);
+    }
+
+    // Fetch Statcast data for batters - try 2025 first, fallback to 2024
+    let { data: batterStatcast, error: batterStatcastError } = await supabase
       .from('player_statcast')
       .select('*')
       .in('player_id', allBatterIds)
       .eq('season', 2025);
 
     if (batterStatcastError) {
-      console.error('Error fetching batter Statcast data:', batterStatcastError);
+      console.error('Error fetching 2025 batter Statcast data:', batterStatcastError);
+    }
+
+    // Fallback to 2024 Statcast data
+    if (!batterStatcast || batterStatcast.length === 0) {
+      console.log('No 2025 Statcast data found, trying 2024...');
+      const { data: fallbackStatcast, error: fallbackError } = await supabase
+        .from('player_statcast')
+        .select('*')
+        .in('player_id', allBatterIds)
+        .eq('season', 2024);
+      
+      if (!fallbackError && fallbackStatcast) {
+        batterStatcast = fallbackStatcast;
+        console.log(`✅ Found ${batterStatcast.length} Statcast records from 2024`);
+      }
+    } else {
+      console.log(`✅ Found ${batterStatcast.length} Statcast records from 2025`);
     }
 
     // Get pitcher stats - traditional and Statcast
     const pitcherIds = [homeStartingPitcher?.player_id, awayStartingPitcher?.player_id].filter(Boolean);
-    const { data: pitcherStats, error: pitcherStatsError } = await supabase
+    console.log('Fetching pitching stats for pitchers:', pitcherIds);
+    
+    let { data: pitcherStats, error: pitcherStatsError } = await supabase
       .from('pitching_stats')
       .select('*')
       .in('player_id', pitcherIds)
       .eq('season', 2025);
 
     if (pitcherStatsError) {
-      console.error('Error fetching pitcher stats:', pitcherStatsError);
+      console.error('Error fetching 2025 pitcher stats:', pitcherStatsError);
     }
 
-    // Fetch Statcast data for pitchers
-    const { data: pitcherStatcast, error: pitcherStatcastError } = await supabase
+    // Fallback to 2024 pitching stats
+    if (!pitcherStats || pitcherStats.length === 0) {
+      console.log('No 2025 pitching stats found, trying 2024...');
+      const { data: fallbackPitcherStats, error: fallbackError } = await supabase
+        .from('pitching_stats')
+        .select('*')
+        .in('player_id', pitcherIds)
+        .eq('season', 2024);
+      
+      if (!fallbackError && fallbackPitcherStats) {
+        pitcherStats = fallbackPitcherStats;
+        console.log(`✅ Found ${pitcherStats.length} pitching stat records from 2024`);
+      }
+    } else {
+      console.log(`✅ Found ${pitcherStats.length} pitching stat records from 2025`);
+    }
+
+    // Fetch Statcast data for pitchers - try 2025 first, fallback to 2024
+    let { data: pitcherStatcast, error: pitcherStatcastError } = await supabase
       .from('player_statcast')
       .select('*')
       .in('player_id', pitcherIds)
       .eq('season', 2025);
 
     if (pitcherStatcastError) {
-      console.error('Error fetching pitcher Statcast data:', pitcherStatcastError);
+      console.error('Error fetching 2025 pitcher Statcast data:', pitcherStatcastError);
+    }
+
+    // Fallback to 2024 pitcher Statcast data
+    if (!pitcherStatcast || pitcherStatcast.length === 0) {
+      console.log('No 2025 pitcher Statcast data found, trying 2024...');
+      const { data: fallbackPitcherStatcast, error: fallbackError } = await supabase
+        .from('player_statcast')
+        .select('*')
+        .in('player_id', pitcherIds)
+        .eq('season', 2024);
+      
+      if (!fallbackError && fallbackPitcherStatcast) {
+        pitcherStatcast = fallbackPitcherStatcast;
+        console.log(`✅ Found ${pitcherStatcast.length} pitcher Statcast records from 2024`);
+      }
+    } else {
+      console.log(`✅ Found ${pitcherStatcast.length} pitcher Statcast records from 2025`);
     }
 
     // Get park factors
@@ -163,6 +234,30 @@ serve(async (req) => {
       .maybeSingle();
 
     console.log(`Loaded stats: ${batterStats?.length || 0} batters, ${pitcherStats?.length || 0} pitchers`);
+    console.log(`Loaded Statcast: ${batterStatcast?.length || 0} batter records, ${pitcherStatcast?.length || 0} pitcher records`);
+
+    // Create lookup maps for data coverage analysis
+    const batterStatsMap = new Map();
+    if (batterStats) {
+      batterStats.forEach((stats: any) => {
+        batterStatsMap.set(stats.player_id, stats);
+      });
+    }
+
+    const pitcherStatsMap = new Map();
+    if (pitcherStats) {
+      pitcherStats.forEach((stats: any) => {
+        pitcherStatsMap.set(stats.player_id, stats);
+      });
+    }
+
+    // Log data coverage
+    const batterCoverage = batterStats ? homeBatters.filter(b => batterStatsMap.has(b.player_id)).length + awayBatters.filter(b => batterStatsMap.has(b.player_id)).length : 0;
+    const totalBatters = homeBatters.length + awayBatters.length;
+    console.log(`📊 Data coverage: ${batterCoverage}/${totalBatters} batters have stats (${Math.round(batterCoverage/totalBatters*100)}%)`);
+    
+    const pitcherCoverage = pitcherStats ? pitcherIds.filter(id => pitcherStatsMap.has(id)).length : 0;
+    console.log(`📊 Pitcher coverage: ${pitcherCoverage}/${pitcherIds.length} pitchers have stats`);
 
     // Run Monte Carlo simulation
     const simulationResult = await runMonteCarloSimulation({
@@ -381,14 +476,15 @@ function simulateTeamOffense(
     const batterStatcast = batterStatcastMap.get(batter.player_id);
     
     // Use Statcast data if available, fallback to traditional stats, then positional defaults
-    let battingAvg = 0.250;
-    let onBasePercentage = 0.320;
-    let sluggingPercentage = 0.400;
-    let barrelRate = 0.06; // Default 6% barrel rate
-    let hardHitRate = 0.35; // Default 35% hard hit rate
-    let exitVelo = 89.0; // Default average exit velocity
-    let launchAngle = 10.0; // Default launch angle
-    let xwOBA = 0.320; // Default expected wOBA
+    // MLB 2024 league averages for more realistic defaults
+    let battingAvg = 0.243;
+    let onBasePercentage = 0.312;
+    let sluggingPercentage = 0.387;
+    let barrelRate = 0.072; // 7.2% league average barrel rate
+    let hardHitRate = 0.386; // 38.6% league average hard hit rate
+    let exitVelo = 88.7; // MLB league average exit velocity
+    let launchAngle = 11.5; // MLB league average launch angle
+    let xwOBA = 0.309; // 2024 league average xwOBA
     
     // Prioritize Statcast data for enhanced accuracy
     if (batterStatcast) {
@@ -453,54 +549,50 @@ function simulateTeamOffense(
     // First check for barrel (most likely to be a hit/homer)
     if (Math.random() < adjustedBarrelRate) {
       // Barrel outcomes are highly likely to be hits, often extra bases
-      if (Math.random() < 0.75) { // 75% of barrels are hits
-        if (Math.random() < 0.50) { // 50% of barrel hits are home runs
+      if (Math.random() < 0.80) { // 80% of barrels are hits
+        if (Math.random() < 0.35) { // 35% of barrel hits are home runs
           runs += baseRunners + 1; // Home run
           baseRunners = 0;
         } else { // Other barrel hits are typically doubles/triples
-          runs += Math.floor(baseRunners * 0.8) + (Math.random() < 0.6 ? 1 : 0);
-          baseRunners = Math.min(3, baseRunners + 1);
+          runs += Math.floor(baseRunners * 0.9); // More runners score on doubles
+          baseRunners = Math.min(3, Math.floor(baseRunners * 0.3) + 1);
         }
       } else {
         // Barrel that didn't fall for a hit (line drive outs, etc.)
-        if (baseRunners > 0 && Math.random() < 0.3) {
-          runs += Math.random() < 0.4 ? 1 : 0; // Productive out
+        if (baseRunners > 0 && Math.random() < 0.4) {
+          runs += Math.random() < 0.6 ? 1 : 0; // Productive out
         }
       }
-    } else if (Math.random() < adjustedHardHitRate && Math.random() < adjustedOBP) {
-      // Hard hit contact that's not a barrel
-      const extraBaseProbability = (adjustedSLG - battingAvg) / 2.5;
+    } else if (Math.random() < adjustedOBP) {
+      // Regular at-bat that reaches base
+      const extraBaseProbability = (adjustedSLG - battingAvg) / 3.0;
       
       if (Math.random() < extraBaseProbability) {
         // Extra base hit
-        runs += Math.floor(baseRunners * 0.7) + (Math.random() < 0.25 ? 1 : 0);
-        baseRunners = Math.min(3, baseRunners + 1);
+        runs += Math.floor(baseRunners * 0.8); // More aggressive base running
+        baseRunners = Math.min(3, Math.floor(baseRunners * 0.4) + 1);
+      } else if (Math.random() < battingAvg / adjustedOBP) {
+        // Hit (single)
+        runs += Math.floor(baseRunners * 0.5); // More runners score on singles
+        baseRunners = Math.min(3, Math.floor(baseRunners * 0.6) + 1);
       } else {
-        // Single
-        runs += Math.floor(baseRunners * 0.4);
+        // Walk or HBP
+        if (baseRunners >= 3) {
+          runs += 1; // Force a run on bases loaded walk
+        }
         baseRunners = Math.min(3, baseRunners + 1);
       }
-    } else if (randomValue < adjustedOBP * 0.75) {
-      // Regular contact that results in a hit
-      if (Math.random() < 0.15) { // Small chance of extra bases
-        runs += Math.floor(baseRunners * 0.6);
-        baseRunners = Math.min(3, baseRunners + 1);
-      } else {
-        // Single
-        runs += Math.floor(baseRunners * 0.35);
-        baseRunners = Math.min(3, baseRunners + 1);
-      }
-    } else if (randomValue < 0.75) {
+    } else if (randomValue < 0.70) {
       // Out with potential for productive at-bat
-      if (baseRunners > 0 && Math.random() < 0.12) {
-        runs += Math.random() < 0.25 ? 1 : 0; // Productive out
+      if (baseRunners > 0 && Math.random() < 0.18) {
+        runs += Math.random() < 0.40 ? 1 : 0; // More productive outs
       }
     }
     // Else: Strikeout or other non-productive out
   }
 
-  // Add remaining base runners with some probability
-  runs += Math.floor(baseRunners * 0.25);
+  // Add remaining base runners with higher probability
+  runs += Math.floor(baseRunners * 0.35); // More likely to score remaining runners
 
   return Math.max(0, Math.round(runs));
 }
