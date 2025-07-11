@@ -22,6 +22,13 @@ export interface MonteCarloResult {
     weather_impact: number;
     home_advantage: number;
     pitcher_fatigue: number;
+    data_quality?: number;
+  };
+  key_insights?: {
+    pitching_matchup: string;
+    offensive_edge: string;
+    environmental_impact: string;
+    confidence_drivers: string[];
   };
   timestamp: string;
 }

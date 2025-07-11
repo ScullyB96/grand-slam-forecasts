@@ -224,75 +224,143 @@ const PredictionCard: React.FC<PredictionCardProps> = ({
 
           <Separator />
 
-          {/* Calculation Breakdown */}
+          {/* New Key Factors Section - Enhanced with Statcast insights */}
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <Calculator className="h-5 w-5 text-primary" />
-              <h3 className="font-semibold">Calculation Breakdown</h3>
+              <h3 className="font-semibold">Key Factors Analysis</h3>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
-              <Card className="p-3 border-l-4 border-l-blue-500">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-blue-700">{awayTeam.abbreviation} Stats</div>
-                  {awayWinPct > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span>Win %:</span>
-                      <span className="font-mono">{formatDecimal(awayWinPct * 100)}%</span>
+            {/* Check for new format key insights */}
+            {keyFactors.pitching_matchup || keyFactors.offensive_edge || keyFactors.environmental_impact ? (
+              <div className="grid grid-cols-1 gap-3">
+                {/* Pitching Matchup */}
+                {keyFactors.pitching_matchup && (
+                  <Card className="p-3 border-l-4 border-l-blue-500">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Pitching Matchup</Badge>
+                      </div>
+                      <div className="text-sm">{keyFactors.pitching_matchup}</div>
                     </div>
-                  )}
-                  {awayRunsPerGame > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span>Runs/Game:</span>
-                      <span className="font-mono">{formatDecimal(awayRunsPerGame)}</span>
-                    </div>
-                  )}
-                  {keyFactors.away_team_record && (
-                    <div className="flex justify-between text-sm">
-                      <span>Record:</span>
-                      <span className="font-mono">{keyFactors.away_team_record}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
+                  </Card>
+                )}
 
-              <Card className="p-3 border-l-4 border-l-green-500">
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-green-700">{homeTeam.abbreviation} Stats</div>
-                  {homeWinPct > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span>Win %:</span>
-                      <span className="font-mono">{formatDecimal(homeWinPct * 100)}%</span>
+                {/* Offensive Edge */}
+                {keyFactors.offensive_edge && (
+                  <Card className="p-3 border-l-4 border-l-green-500">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        {keyFactors.offensive_edge.includes(homeTeam.name) ? 
+                          <TrendingUp className="h-4 w-4 text-green-600" /> :
+                          keyFactors.offensive_edge.includes(awayTeam.name) ? 
+                          <TrendingDown className="h-4 w-4 text-red-600" /> :
+                          <Badge variant="outline" className="text-xs">Offensive Balance</Badge>
+                        }
+                        <span className="text-xs font-medium">Offensive Analysis</span>
+                      </div>
+                      <div className="text-sm">{keyFactors.offensive_edge}</div>
                     </div>
-                  )}
-                  {homeRunsPerGame > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span>Runs/Game:</span>
-                      <span className="font-mono">{formatDecimal(homeRunsPerGame)}</span>
-                    </div>
-                  )}
-                  {keyFactors.home_team_record && (
-                    <div className="flex justify-between text-sm">
-                      <span>Record:</span>
-                      <span className="font-mono">{keyFactors.home_team_record}</span>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
+                  </Card>
+                )}
 
-            {/* Algorithm Components */}
+                {/* Environmental Impact */}
+                {keyFactors.environmental_impact && (
+                  <Card className="p-3 border-l-4 border-l-orange-500">
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Environment</Badge>
+                      </div>
+                      <div className="text-sm">{keyFactors.environmental_impact}</div>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Confidence Drivers */}
+                {keyFactors.confidence_drivers && Array.isArray(keyFactors.confidence_drivers) && keyFactors.confidence_drivers.length > 0 && (
+                  <Card className="p-3 border-l-4 border-l-purple-500">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-purple-700">Confidence Factors</div>
+                      <div className="flex flex-wrap gap-1">
+                        {keyFactors.confidence_drivers.map((factor: string, index: number) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {factor}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              /* Fallback to original format */
+              <div className="grid grid-cols-2 gap-4">
+                <Card className="p-3 border-l-4 border-l-blue-500">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-blue-700">{awayTeam.abbreviation} Stats</div>
+                    {awayWinPct > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Win %:</span>
+                        <span className="font-mono">{formatDecimal(awayWinPct * 100)}%</span>
+                      </div>
+                    )}
+                    {awayRunsPerGame > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Runs/Game:</span>
+                        <span className="font-mono">{formatDecimal(awayRunsPerGame)}</span>
+                      </div>
+                    )}
+                    {keyFactors.away_team_record && (
+                      <div className="flex justify-between text-sm">
+                        <span>Record:</span>
+                        <span className="font-mono">{keyFactors.away_team_record}</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+
+                <Card className="p-3 border-l-4 border-l-green-500">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-green-700">{homeTeam.abbreviation} Stats</div>
+                    {homeWinPct > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Win %:</span>
+                        <span className="font-mono">{formatDecimal(homeWinPct * 100)}%</span>
+                      </div>
+                    )}
+                    {homeRunsPerGame > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Runs/Game:</span>
+                        <span className="font-mono">{formatDecimal(homeRunsPerGame)}</span>
+                      </div>
+                    )}
+                    {keyFactors.home_team_record && (
+                      <div className="flex justify-between text-sm">
+                        <span>Record:</span>
+                        <span className="font-mono">{keyFactors.home_team_record}</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            )}
+
+            {/* Algorithm Components - Updated for new simulation */}
             <Card className="p-3 bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200">
               <div className="space-y-2">
-                <div className="text-sm font-medium text-purple-700">Algorithm Components</div>
-                <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="text-sm font-medium text-purple-700">Simulation Components</div>
+                <div className="grid grid-cols-4 gap-3 text-xs">
                   <div className="text-center">
-                    <div className="font-medium">Team Strength</div>
-                    <div className="text-purple-600">60% weight</div>
+                    <div className="font-medium">Statcast Data</div>
+                    <div className="text-purple-600">40% weight</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-medium">Home Advantage</div>
-                    <div className="text-purple-600">40% weight</div>
+                    <div className="font-medium">Park Factors</div>
+                    <div className="text-purple-600">25% weight</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-medium">Weather</div>
+                    <div className="text-purple-600">15% weight</div>
                   </div>
                   <div className="text-center">
                     <div className="font-medium">Confidence</div>

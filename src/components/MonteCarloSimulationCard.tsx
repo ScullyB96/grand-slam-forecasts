@@ -246,17 +246,73 @@ const MonteCarloSimulationCard: React.FC<MonteCarloSimulationCardProps> = ({
 
               <Separator />
 
-              {/* Simulation Factors */}
+              {/* Key Insights - NEW */}
+              {result.key_insights && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Target className="h-5 w-5 text-primary" />
+                    <h4 className="font-semibold">Key Insights</h4>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {result.key_insights.pitching_matchup && (
+                      <Card className="p-3 border-l-4 border-l-blue-500">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-blue-700">Pitching Matchup</div>
+                          <div className="text-sm">{result.key_insights.pitching_matchup}</div>
+                        </div>
+                      </Card>
+                    )}
+                    
+                    {result.key_insights.offensive_edge && (
+                      <Card className="p-3 border-l-4 border-l-green-500">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-green-700">Offensive Analysis</div>
+                          <div className="text-sm">{result.key_insights.offensive_edge}</div>
+                        </div>
+                      </Card>
+                    )}
+                    
+                    {result.key_insights.environmental_impact && (
+                      <Card className="p-3 border-l-4 border-l-orange-500">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-orange-700">Environmental Impact</div>
+                          <div className="text-sm">{result.key_insights.environmental_impact}</div>
+                        </div>
+                      </Card>
+                    )}
+
+                    {result.key_insights.confidence_drivers && Array.isArray(result.key_insights.confidence_drivers) && result.key_insights.confidence_drivers.length > 0 && (
+                      <Card className="p-3 border-l-4 border-l-purple-500">
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-purple-700">Confidence Drivers</div>
+                          <div className="flex flex-wrap gap-1">
+                            {result.key_insights.confidence_drivers.map((factor: string, index: number) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {factor}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <Separator />
+
+              {/* Simulation Factors - Enhanced */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <Info className="h-5 w-5 text-primary" />
-                  <h4 className="font-semibold">Simulation Factors</h4>
+                  <h4 className="font-semibold">Simulation Parameters</h4>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <Card className="p-3">
                     <div className="space-y-2">
-                      <div className="text-sm font-medium">Environmental</div>
+                      <div className="text-sm font-medium">Environmental Factors</div>
                       <div className="space-y-1 text-xs text-muted-foreground">
                         <div className="flex justify-between">
                           <span>Park Factor:</span>
@@ -270,13 +326,19 @@ const MonteCarloSimulationCard: React.FC<MonteCarloSimulationCardProps> = ({
                           <span>Home Advantage:</span>
                           <span>{formatDecimal(result.factors.home_advantage)}x</span>
                         </div>
+                        {result.factors.data_quality && (
+                          <div className="flex justify-between">
+                            <span>Data Quality:</span>
+                            <span>{formatProbability(result.factors.data_quality)}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </Card>
 
                   <Card className="p-3">
                     <div className="space-y-2">
-                      <div className="text-sm font-medium">Model Quality</div>
+                      <div className="text-sm font-medium">Model Performance</div>
                       <div className="space-y-1 text-xs text-muted-foreground">
                         <div className="flex justify-between">
                           <span>Confidence:</span>
@@ -288,7 +350,7 @@ const MonteCarloSimulationCard: React.FC<MonteCarloSimulationCardProps> = ({
                         </div>
                         <div className="flex justify-between">
                           <span>Method:</span>
-                          <span>Monte Carlo</span>
+                          <span>Statcast Monte Carlo</span>
                         </div>
                       </div>
                     </div>
