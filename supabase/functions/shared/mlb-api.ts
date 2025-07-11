@@ -1,3 +1,4 @@
+// supabase/functions/shared/mlb-api.ts
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -10,242 +11,105 @@ export async function getSchedule(date: string) {
 export async function getGameLineups(gamePk: number) {
   const url = `https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`;
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`MLB API error for gamePk ${gamePk}: ${response.status}`);
+  }
   return await response.json();
 }
 
 export async function getGameBoxscore(gamePk: number) {
-  const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`;
-  const response = await fetch(url);
-  const data = await response.json();
-  return data;
+    const url = `https://statsapi.mlb.com/api/v1/game/${gamePk}/boxscore`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`MLB API error for gamePk ${gamePk}: ${response.status}`);
+    }
+    return await response.json();
 }
 
 export function createTeamIdMapping(teams: { id: number, team_id: number }[]): Map<number, number> {
   const teamIdMapping = new Map<number, number>();
   teams.forEach(team => {
-    teamIdMapping.set(team.team_id, team.id);
+    if (team.team_id) {
+      teamIdMapping.set(team.team_id, team.id);
+    }
   });
   return teamIdMapping;
 }
 
-// Position code mapping from MLB API numbers to position abbreviations
 const positionCodeMap: { [key: string]: string } = {
-  '1': 'P',   // Pitcher
-  '2': 'C',   // Catcher
-  '3': '1B',  // First Base
-  '4': '2B',  // Second Base
-  '5': '3B',  // Third Base
-  '6': 'SS',  // Shortstop
-  '7': 'LF',  // Left Field
-  '8': 'CF',  // Center Field
-  '9': 'RF',  // Right Field
-  '10': 'DH', // Designated Hitter
-  '11': 'PH', // Pinch Hitter
-  '12': 'PR'  // Pinch Runner
+  '1': 'P', '2': 'C', '3': '1B', '4': '2B', '5': '3B', '6': 'SS',
+  '7': 'LF', '8': 'CF', '9': 'RF', '10': 'DH', '11': 'PH', '12': 'PR'
 };
 
 function mapPositionCode(positionCode: string | number): string {
-  const code = String(positionCode);
-  return positionCodeMap[code] || code;
+  return positionCodeMap[String(positionCode)] || String(positionCode);
 }
 
-export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, teamIdMapping: Map<number, number>): any[] {
-  console.log(`🔍 Extracting lineups from boxscore for game ${gameId}`);
-  
-  if (!boxscoreData?.teams) {
-    console.log('❌ No teams data in boxscore');
+export function extractLineupsFromGameFeed(gameData: any, teamIdMapping: Map<number, number>): any[] {
+  const gameId = gameData?.gameData?.game?.pk;
+  if (!gameId || !gameData?.liveData?.boxscore?.teams) {
+    console.log('No valid lineup data in game feed.');
     return [];
   }
 
   const lineups: any[] = [];
+  const { home, away } = gameData.liveData.boxscore.teams;
 
-  // Process both home and away teams
-  ['home', 'away'].forEach(teamType => {
-    const teamData = boxscoreData.teams[teamType];
-    if (!teamData) {
-      console.log(`❌ No ${teamType} team data`);
-      return;
-    }
-
+  [home, away].forEach(teamData => {
     const mlbTeamId = teamData.team?.id;
-    if (!mlbTeamId) {
-      console.log(`❌ No team ID found for ${teamType} team`);
-      return;
-    }
+    if (!mlbTeamId) return;
 
     const dbTeamId = teamIdMapping.get(mlbTeamId);
     if (!dbTeamId) {
-      console.log(`❌ No database team ID mapping found for MLB team ${mlbTeamId}`);
+      console.warn(`No DB mapping for MLB team ID: ${mlbTeamId}`);
       return;
     }
 
-    console.log(`📋 Processing ${teamType} team: MLB ID ${mlbTeamId} -> DB ID ${dbTeamId}`);
-
-    // Try multiple sources for batting lineup data
-    let battingLineupSource = null;
-    let battingPlayers = [];
-
-    // Option 1: Check batters array
-    if (teamData.batters && Array.isArray(teamData.batters) && teamData.batters.length > 0) {
-      console.log(`  Found batters array with ${teamData.batters.length} players`);
-      battingLineupSource = 'batters';
-      
-      // Get detailed player info from players object
-      if (teamData.players) {
-        teamData.batters.forEach((playerId: number, index: number) => {
-          const playerKey = `ID${playerId}`;
-          const playerInfo = teamData.players[playerKey];
-          
-          if (playerInfo?.person) {
-            battingPlayers.push({
-              person: playerInfo.person,
-              position: playerInfo.position,
-              battingOrder: index + 1,
-              stats: playerInfo.stats
-            });
-          } else {
-            console.log(`    No detailed info for batter ${playerId}`);
-          }
-        });
-      }
-    }
-
-    // Option 2: Check lineup array (fallback)
-    if (battingPlayers.length === 0 && teamData.lineup && Array.isArray(teamData.lineup)) {
-      console.log(`  Found lineup array with ${teamData.lineup.length} players`);
-      battingLineupSource = 'lineup';
-      battingPlayers = teamData.lineup;
-    }
-
-    // Option 3: Check battingOrder array (fallback)
-    if (battingPlayers.length === 0 && teamData.battingOrder && Array.isArray(teamData.battingOrder)) {
-      console.log(`  Found battingOrder array with ${teamData.battingOrder.length} players`);
-      battingLineupSource = 'battingOrder';
-      battingPlayers = teamData.battingOrder;
-    }
-
-    console.log(`  Using ${battingLineupSource} source for batting lineup (${battingPlayers.length} players)`);
-
-    // Process batting lineup
-    battingPlayers.forEach((player: any, index: number) => {
-      if (!player.person) {
-        console.log(`    No person data found for batting lineup entry ${index}`);
-        return;
-      }
-
-      const battingOrder = player.battingOrder || (index + 1);
-      
-      // Only include players in the batting lineup (battingOrder 1-9)
-      if (battingOrder <= 9) {
-        // Extract and map position from the correct field
-        let position = 'UNK';
-        if (player.position?.code) {
-          position = mapPositionCode(player.position.code);
-        } else if (player.position?.abbreviation) {
-          position = player.position.abbreviation;
-        } else if (player.position?.name) {
-          position = player.position.name;
-        }
-        
-        // Extract batting handedness - more comprehensive approach
-        let battingHand = 'U';
-        if (player.person?.batSide?.code) {
-          battingHand = player.person.batSide.code;
-        } else if (player.person?.batSide?.description) {
-          const desc = player.person.batSide.description.toLowerCase();
-          if (desc.includes('left')) battingHand = 'L';
-          else if (desc.includes('right')) battingHand = 'R';
-          else if (desc.includes('switch')) battingHand = 'S';
-        }
-        
-        lineups.push({
-          game_id: gameId,
-          team_id: dbTeamId,
-          lineup_type: 'batting',
-          batting_order: battingOrder,
-          player_id: player.person.id,
-          player_name: player.person.fullName || `Player ${player.person.id}`,
-          position: position,
-          handedness: battingHand,
-          is_starter: true
-        });
-        
-        console.log(`    Added batter: ${player.person.fullName} (#${battingOrder}) - ${position} - ${battingHand}`);
-      }
-    });
-
-    // Process pitching lineup from pitchers array
-    if (teamData.pitchers && Array.isArray(teamData.pitchers)) {
-      console.log(`  Processing ${teamData.pitchers.length} pitchers for ${teamType} team`);
-      
-      teamData.pitchers.forEach((playerId: number, index: number) => {
+    // Process Batting Lineup
+    if (teamData.batters && teamData.players) {
+      const batterIds = teamData.batters;
+      batterIds.forEach((playerId: number, index: number) => {
         const playerKey = `ID${playerId}`;
-        const playerInfo = teamData.players?.[playerKey];
-        
-        if (!playerInfo?.person) {
-          console.log(`    No person data found for pitcher ${playerId}`);
-          return;
+        const player = teamData.players[playerKey];
+        if (player && player.person) {
+          lineups.push({
+            game_id: gameId,
+            team_id: dbTeamId,
+            lineup_type: 'batting',
+            batting_order: index + 1,
+            player_id: player.person.id,
+            player_name: player.person.fullName,
+            position: player.position?.abbreviation || 'N/A',
+            handedness: player.batSide?.code || 'U',
+            is_starter: true
+          });
         }
-
-        const isStarter = index === 0; // First pitcher is the starter
-        
-        // Extract pitching handedness - more comprehensive approach
-        let pitchingHand = 'U';
-        if (playerInfo.person?.pitchHand?.code) {
-          pitchingHand = playerInfo.person.pitchHand.code;
-        } else if (playerInfo.person?.pitchHand?.description) {
-          const desc = playerInfo.person.pitchHand.description.toLowerCase();
-          if (desc.includes('left')) pitchingHand = 'L';
-          else if (desc.includes('right')) pitchingHand = 'R';
-        }
-        
-        lineups.push({
-          game_id: gameId,
-          team_id: dbTeamId,
-          lineup_type: 'pitching',
-          batting_order: null,
-          player_id: playerInfo.person.id,
-          player_name: playerInfo.person.fullName || `Player ${playerInfo.person.id}`,
-          position: isStarter ? 'SP' : 'RP',
-          handedness: pitchingHand,
-          is_starter: isStarter
-        });
-        
-        console.log(`    Added pitcher: ${playerInfo.person.fullName} (${isStarter ? 'SP' : 'RP'}) - ${pitchingHand}HP`);
       });
-    } else {
-      console.log(`  No pitchers array found for ${teamType} team`);
+    }
+
+    // Process Pitching Lineup
+    if (teamData.pitchers && teamData.players) {
+      const pitcherIds = teamData.pitchers;
+      pitcherIds.forEach((playerId: number, index: number) => {
+        const playerKey = `ID${playerId}`;
+        const player = teamData.players[playerKey];
+        if (player && player.person) {
+          const isStarter = index === 0;
+          lineups.push({
+            game_id: gameId,
+            team_id: dbTeamId,
+            lineup_type: 'pitching',
+            batting_order: null,
+            player_id: player.person.id,
+            player_name: player.person.fullName,
+            position: isStarter ? 'SP' : 'RP',
+            handedness: player.pitchHand?.code || 'U',
+            is_starter: isStarter
+          });
+        }
+      });
     }
   });
 
-  console.log(`✅ Extracted ${lineups.length} total lineup entries for game ${gameId}`);
-  
-  // Validate lineup counts
-  const battingLineups = lineups.filter(l => l.lineup_type === 'batting');
-  const pitchingLineups = lineups.filter(l => l.lineup_type === 'pitching');
-  const starters = pitchingLineups.filter(p => p.is_starter);
-  
-  console.log(`📊 Lineup validation for game ${gameId}:`);
-  console.log(`  - Total batting entries: ${battingLineups.length} (expected: 18 for both teams)`);
-  console.log(`  - Total pitching entries: ${pitchingLineups.length}`);
-  console.log(`  - Starting pitchers: ${starters.length} (expected: 2)`);
-  
-  // Group by team for detailed validation
-  const homeTeamLineups = lineups.filter(l => l.team_id === teamIdMapping.get(boxscoreData.teams.home?.team?.id));
-  const awayTeamLineups = lineups.filter(l => l.team_id === teamIdMapping.get(boxscoreData.teams.away?.team?.id));
-  
-  console.log(`  - Home team entries: ${homeTeamLineups.length} (batting: ${homeTeamLineups.filter(l => l.lineup_type === 'batting').length})`);
-  console.log(`  - Away team entries: ${awayTeamLineups.length} (batting: ${awayTeamLineups.filter(l => l.lineup_type === 'batting').length})`);
-  
   return lineups;
-}
-
-// Legacy function for backward compatibility
-export function extractLineupsFromGameFeed(gameData: any, teamIdMapping: Map<number, number>): any[] {
-  if (!gameData?.liveData?.boxscore) {
-    console.log('No boxscore data available in game feed');
-    return [];
-  }
-  
-  return extractLineupsFromBoxscore(gameData.liveData.boxscore, gameData.gameData.game.pk, teamIdMapping);
 }
