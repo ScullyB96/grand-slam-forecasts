@@ -4,10 +4,11 @@ import Header from '@/components/Header';
 import { useGames } from '@/hooks/useGames';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings, RefreshCw, Database, Calendar, Users, Activity } from 'lucide-react';
+import { Settings, RefreshCw, Database, Calendar, Users, Activity, BarChart3, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useGameLineups } from '@/hooks/useGameLineups';
+import { useIngestStatcastData, useIngestGameFeed } from '@/hooks/useStatcastData';
 
 const Admin = () => {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -16,6 +17,10 @@ const Admin = () => {
   const { data: games, refetch: refetchGames } = useGames(selectedDate);
   const { data: testLineups, refetch: refetchLineups } = useGameLineups(testGameId || 0);
   const { toast } = useToast();
+  
+  // Statcast ingestion hooks
+  const ingestStatcast = useIngestStatcastData();
+  const ingestGameFeed = useIngestGameFeed();
 
   const handleFetchSchedule = async () => {
     setIsLoading(true);
@@ -145,6 +150,104 @@ const Admin = () => {
                   <Users className="h-4 w-4 mr-2" />
                   Fetch Lineups
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Statcast Management */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Statcast Data Pipeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm text-muted-foreground mb-4">
+                Enhanced Monte Carlo simulation with real 2025 Statcast metrics
+              </div>
+              
+              <div className="space-y-2">
+                <Button
+                  onClick={() => {
+                    ingestStatcast.mutate({ season: 2025 });
+                    toast({
+                      title: "Statcast Ingestion Started",
+                      description: "Fetching 2025 player Statcast metrics...",
+                    });
+                  }}
+                  disabled={ingestStatcast.isPending}
+                  className="w-full"
+                  variant="default"
+                >
+                  {ingestStatcast.isPending ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Ingesting Statcast...
+                    </>
+                  ) : (
+                    <>
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                      Ingest Player Statcast
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    const gameIds = games?.map(g => g.game_id) || [];
+                    if (gameIds.length > 0) {
+                      ingestGameFeed.mutate({ gameIds });
+                      toast({
+                        title: "Game Feed Ingestion Started",
+                        description: `Processing ${gameIds.length} games for pitch/hit data...`,
+                      });
+                    }
+                  }}
+                  disabled={ingestGameFeed.isPending || !games?.length}
+                  className="w-full"
+                  variant="secondary"
+                >
+                  {ingestGameFeed.isPending ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Processing Games...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="h-4 w-4 mr-2" />
+                      Ingest Game Feeds
+                    </>
+                  )}
+                </Button>
+
+                <Button
+                  onClick={async () => {
+                    try {
+                      const { data, error } = await supabase.functions.invoke('scheduled-statcast-ingestion');
+                      if (error) throw error;
+                      toast({
+                        title: "Full Pipeline Triggered",
+                        description: "Running complete Statcast ETL pipeline...",
+                      });
+                    } catch (error) {
+                      toast({
+                        title: "Pipeline Failed",
+                        description: error instanceof Error ? error.message : "Unknown error",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                  className="w-full"
+                  variant="outline"
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Run Full Pipeline
+                </Button>
+              </div>
+
+              <div className="text-xs text-muted-foreground pt-2 border-t">
+                Pipeline includes: Player metrics → Game feeds → Prediction refresh
               </div>
             </CardContent>
           </Card>
