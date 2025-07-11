@@ -28,6 +28,27 @@ export function createTeamIdMapping(teams: { id: number, team_id: number }[]): M
   return teamIdMapping;
 }
 
+// Position code mapping from MLB API numbers to position abbreviations
+const positionCodeMap: { [key: string]: string } = {
+  '1': 'P',   // Pitcher
+  '2': 'C',   // Catcher
+  '3': '1B',  // First Base
+  '4': '2B',  // Second Base
+  '5': '3B',  // Third Base
+  '6': 'SS',  // Shortstop
+  '7': 'LF',  // Left Field
+  '8': 'CF',  // Center Field
+  '9': 'RF',  // Right Field
+  '10': 'DH', // Designated Hitter
+  '11': 'PH', // Pinch Hitter
+  '12': 'PR'  // Pinch Runner
+};
+
+function mapPositionCode(positionCode: string | number): string {
+  const code = String(positionCode);
+  return positionCodeMap[code] || code;
+}
+
 export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, teamIdMapping: Map<number, number>): any[] {
   console.log(`🔍 Extracting lineups from boxscore for game ${gameId}`);
   
@@ -116,11 +137,26 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
       
       // Only include players in the batting lineup (battingOrder 1-9)
       if (battingOrder <= 9) {
-        // Extract position from the correct field
-        const position = player.position?.code || player.position?.abbreviation || player.position?.name || 'UNK';
+        // Extract and map position from the correct field
+        let position = 'UNK';
+        if (player.position?.code) {
+          position = mapPositionCode(player.position.code);
+        } else if (player.position?.abbreviation) {
+          position = player.position.abbreviation;
+        } else if (player.position?.name) {
+          position = player.position.name;
+        }
         
-        // Extract batting handedness
-        const battingHand = player.person?.batSide?.code || player.person?.batSide?.description?.[0] || 'U';
+        // Extract batting handedness - more comprehensive approach
+        let battingHand = 'U';
+        if (player.person?.batSide?.code) {
+          battingHand = player.person.batSide.code;
+        } else if (player.person?.batSide?.description) {
+          const desc = player.person.batSide.description.toLowerCase();
+          if (desc.includes('left')) battingHand = 'L';
+          else if (desc.includes('right')) battingHand = 'R';
+          else if (desc.includes('switch')) battingHand = 'S';
+        }
         
         lineups.push({
           game_id: gameId,
@@ -153,8 +189,15 @@ export function extractLineupsFromBoxscore(boxscoreData: any, gameId: number, te
 
         const isStarter = index === 0; // First pitcher is the starter
         
-        // Extract pitching handedness
-        const pitchingHand = playerInfo.person?.pitchHand?.code || playerInfo.person?.pitchHand?.description?.[0] || 'U';
+        // Extract pitching handedness - more comprehensive approach
+        let pitchingHand = 'U';
+        if (playerInfo.person?.pitchHand?.code) {
+          pitchingHand = playerInfo.person.pitchHand.code;
+        } else if (playerInfo.person?.pitchHand?.description) {
+          const desc = playerInfo.person.pitchHand.description.toLowerCase();
+          if (desc.includes('left')) pitchingHand = 'L';
+          else if (desc.includes('right')) pitchingHand = 'R';
+        }
         
         lineups.push({
           game_id: gameId,
